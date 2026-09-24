@@ -14,12 +14,16 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.22" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.13" />
+    <PackageReference Include="Semi.Avalonia" Version="11.3.22" />
+    <PackageReference Include="Semi.Avalonia.DataGrid" Version="11.3.13" />
+    <PackageReference Include="Irihi.Ursa" Version="1.15.1" />
+    <PackageReference Include="Irihi.Ursa.Themes.Semi" Version="1.15.1" />
   </ItemGroup>
 
   <ItemGroup>
     <AvaloniaResource Include="Assets/icon.ico" />
+    <AvaloniaResource Include="Assets/icon.png" />
   </ItemGroup>
 
   <ItemGroup>

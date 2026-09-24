@@ -1,27 +1,47 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:semi="https://irihi.tech/semi"
+             xmlns:u-semi="https://irihi.tech/ursa/themes/semi"
              x:Class="SubMatcher.Gui.App"
              RequestedThemeVariant="Default">
   <Application.Styles>
-    <FluentTheme />
-    <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
-    <Style Selector="TextBlock.label">
-      <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="Margin" Value="0,0,8,0" />
-    </Style>
-    <Style Selector="StackPanel.opt > TextBlock">
-      <Setter Property="VerticalAlignment" Value="Center" />
-      <Setter Property="Margin" Value="12,0,4,0" />
-    </Style>
-    <Style Selector="StackPanel.opt > NumericUpDown">
-      <Setter Property="Width" Value="130" />
+    <semi:SemiTheme Locale="zh-CN" />
+    <semi:DataGridSemiTheme />
+    <u-semi:SemiTheme Locale="zh-CN" />
+
+    <!-- small caption above an input -->
+    <Style Selector="TextBlock.field">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Opacity" Value="0.7" />
+      <Setter Property="Margin" Value="2,0,0,4" />
     </Style>
     <Style Selector="TextBlock.h">
+      <Setter Property="FontSize" Value="15" />
       <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Margin" Value="0,0,0,6" />
     </Style>
-    <Style Selector="StackPanel.section">
-      <Setter Property="Margin" Value="0,0,0,12" />
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Opacity" Value="0.6" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="Border.card">
+      <Setter Property="Theme" Value="{DynamicResource CardBorder}" />
+      <Setter Property="Padding" Value="16" />
+    </Style>
+    <!-- content that fades/slides in when it gets data -->
+    <Style Selector=":is(Control).reveal">
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.35" Easing="CubicEaseOut" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.35" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="RenderTransform" Value="translateY(12px)" />
+    </Style>
+    <Style Selector=":is(Control).reveal.shown">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="RenderTransform" Value="translateY(0px)" />
     </Style>
   </Application.Styles>
 </Application>

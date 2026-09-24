@@ -114,8 +114,8 @@ public static class Sync
         MatchStatus.Low => "相似度低",
         MatchStatus.Jump => "大跳跃",
         MatchStatus.Smoothed => "已平滑",
-        MatchStatus.Static => "静态(沿用邻近)",
-        MatchStatus.Inherited => "未匹配(沿用邻近)",
+        MatchStatus.Static => "静态·沿用邻近",
+        MatchStatus.Inherited => "未匹配·沿用邻近",
         MatchStatus.OutOfRange => "超出源视频",
         _ => s.ToString(),
     };

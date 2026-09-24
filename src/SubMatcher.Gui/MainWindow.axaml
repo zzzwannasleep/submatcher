@@ -1,190 +1,313 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:u="https://irihi.tech/ursa"
         xmlns:local="using:SubMatcher.Gui"
         x:Class="SubMatcher.Gui.MainWindow"
-        Title="SubMatcher — 画面调轴" Icon="/Assets/icon.ico" Width="1180" Height="800" MinWidth="820" MinHeight="560"
-        DragDrop.AllowDrop="True">
-  <TabControl x:Name="Tabs" Margin="8">
-
-    <!-- ============ 画面调轴 ============ -->
-    <TabItem Header="画面调轴">
-      <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="4">
-        <Grid ColumnDefinitions="90,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="6">
-          <TextBlock Classes="label" Text="源视频" />
-          <TextBox x:Name="SrcVideo" Grid.Column="1" Watermark="旧片源（TV / Web），字幕原本对应的视频。可直接把文件拖进窗口" />
-          <Button Grid.Column="2" Content="浏览…" Tag="SrcVideo" Click="BrowseVideo" />
-
-          <TextBlock Grid.Row="1" Classes="label" Text="源字幕" />
-          <TextBox x:Name="SrcSub" Grid.Row="1" Grid.Column="1" Watermark="留空 = 使用源视频的内封字幕" />
-          <Button Grid.Row="1" Grid.Column="2" Content="浏览…" Click="BrowseSrcSub" />
-
-          <TextBlock Grid.Row="2" Classes="label" Text="目标视频" />
-          <TextBox x:Name="DstVideo" Grid.Row="2" Grid.Column="1" Watermark="新片源（BD），要对上的视频" />
-          <Button Grid.Row="2" Grid.Column="2" Content="浏览…" Tag="DstVideo" Click="BrowseVideo" />
-
-          <TextBlock Grid.Row="3" Classes="label" Text="输出字幕" />
-          <TextBox x:Name="OutSub" Grid.Row="3" Grid.Column="1" Watermark="留空 = 目标视频同目录、同名" />
-          <Button Grid.Row="3" Grid.Column="2" Content="另存为…" Click="BrowseOut" />
+        Title="SubMatcher" Icon="/Assets/icon.ico" Width="1280" Height="820" MinWidth="960" MinHeight="600"
+        WindowStartupLocation="CenterScreen" DragDrop.AllowDrop="True">
+  <Grid>
+    <DockPanel>
+      <!-- ============ top bar ============ -->
+      <Border DockPanel.Dock="Top" Padding="20,12" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SemiColorBorder}">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <Image Source="/Assets/icon.png" Width="28" Height="28" />
+            <TextBlock Text="SubMatcher" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+            <TextBlock Text="用画面给字幕调轴" Classes="hint" VerticalAlignment="Center" Margin="4,3,0,0" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+            <Button x:Name="ThemeBtn" Theme="{DynamicResource BorderlessButton}" Content="深色模式" Click="ToggleTheme" ToolTip.Tip="切换浅色 / 深色" />
+            <Button x:Name="TourBtn" Theme="{DynamicResource OutlineButton}" Content="使用引导" Click="StartTour" />
+          </StackPanel>
         </Grid>
+      </Border>
 
-        <WrapPanel Grid.Row="1" Margin="0,10,0,0">
-          <StackPanel Classes="opt" Orientation="Horizontal" Margin="0,0,0,6">
-            <TextBlock Text="搜索窗口 ±秒" Margin="0,0,4,0" />
-            <NumericUpDown x:Name="OptWindow" Value="10" Minimum="1" Maximum="600" Increment="5" />
-            <TextBlock Text="分析帧率" ToolTip.Tip="0 = 跟随目标视频" />
-            <NumericUpDown x:Name="OptFps" Value="0" Minimum="0" Maximum="120" Increment="1" FormatString="0.###" />
-            <TextBlock Text="最大代价" ToolTip.Tip="超过则视为该行没找到（0 完全一致，1 毫不相干）" />
-            <NumericUpDown x:Name="OptMaxCost" Value="0.4" Minimum="0.05" Maximum="1" Increment="0.05" FormatString="0.00" />
-            <TextBlock Text="提示代价" ToolTip.Tip="超过则写进检查日志" />
-            <NumericUpDown x:Name="OptWarnCost" Value="0.2" Minimum="0.01" Maximum="1" Increment="0.05" FormatString="0.00" />
-          </StackPanel>
-          <StackPanel Classes="opt" Orientation="Horizontal" Margin="0,0,0,6">
-            <TextBlock Text="最短取样秒" Margin="0,0,4,0" ToolTip.Tip="短于此长度的行会向两边扩展取样" />
-            <NumericUpDown x:Name="OptMinLine" Value="1.5" Minimum="0.2" Maximum="10" Increment="0.5" FormatString="0.0" />
-            <TextBlock Text="内封字幕轨" />
-            <NumericUpDown x:Name="OptStream" Value="0" Minimum="0" Maximum="99" Increment="1" />
-            <CheckBox x:Name="OptSnap" Content="吸附镜头切换" IsChecked="True" Margin="12,0,0,0" ToolTip.Tip="原本卡在切镜头处的时间点，调整后也卡在目标视频的切镜头处" />
-            <CheckBox x:Name="OptHw" Content="硬件解码" Margin="12,0,0,0" />
-            <CheckBox x:Name="OptCache" Content="缓存画面指纹" IsChecked="True" Margin="12,0,0,0" />
-          </StackPanel>
-        </WrapPanel>
+      <TabControl x:Name="Tabs" Theme="{DynamicResource LineTabControl}" Margin="20,8,20,16">
 
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8" Margin="0,4,0,8">
-          <Button x:Name="RunBtn" Content="开始调轴" Classes="accent" Click="RunSync" />
-          <Button x:Name="CancelBtn" Grid.Column="1" Content="取消" IsEnabled="False" Click="Cancel" />
-          <Button x:Name="OpenLogBtn" Grid.Column="2" Content="查看检查日志" IsEnabled="False" Click="ShowCheckLog" />
-          <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="8,0">
-            <ProgressBar x:Name="Progress" Minimum="0" Maximum="1" Height="6" />
-            <TextBlock x:Name="Status" Text="把源视频、字幕、目标视频拖进窗口即可" FontSize="12" Margin="0,4,0,0" Opacity="0.8" />
-          </StackPanel>
-          <CheckBox x:Name="OnlyCheck" Grid.Column="4" Content="只看需检查的行" IsCheckedChanged="FilterChanged" />
-        </Grid>
+        <!-- ============ 画面调轴 ============ -->
+        <TabItem x:Name="TabSync" Header="画面调轴">
+          <Grid ColumnDefinitions="340,20,*" Margin="0,12,0,0">
+            <ScrollViewer>
+              <StackPanel Spacing="12">
+                <Border x:Name="FilesCard" Classes="card">
+                  <StackPanel Spacing="12">
+                    <TextBlock Classes="h" Text="选择文件" />
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="源视频（旧片源，字幕原本对应的视频）" />
+                      <TextBox x:Name="SrcVideo" Watermark="拖入或浏览…">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="SrcVideo" Click="BrowseVideo" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="源字幕（留空 = 使用源视频的内封字幕）" />
+                      <TextBox x:Name="SrcSub" Watermark=".ass / .ssa / .srt">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Click="BrowseSrcSub" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="目标视频（新片源，要对上的视频）" />
+                      <TextBox x:Name="DstVideo" Watermark="拖入或浏览…">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="DstVideo" Click="BrowseVideo" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="输出（留空 = 目标视频同目录、同名）" />
+                      <TextBox x:Name="OutSub" Watermark="自动">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="另存为" Click="BrowseOut" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                  </StackPanel>
+                </Border>
 
-        <Grid Grid.Row="3" ColumnDefinitions="*,6,380">
-          <DataGrid x:Name="Grid" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="True"
-                    GridLinesVisibility="Horizontal" SelectionChanged="RowSelected">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="50" />
-              <DataGridTextColumn Header="原开始" Binding="{Binding OldStart}" Width="100" />
-              <DataGridTextColumn Header="新开始" Binding="{Binding NewStart}" Width="100" />
-              <DataGridTextColumn Header="偏移" Binding="{Binding Shift}" Width="85" />
-              <DataGridTextColumn Header="代价" Binding="{Binding Cost}" Width="65" />
-              <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="140" />
-              <DataGridTextColumn Header="文本" Binding="{Binding Text}" Width="*" />
-            </DataGrid.Columns>
-          </DataGrid>
-          <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
-          <ScrollViewer Grid.Column="2">
-            <StackPanel Spacing="6" Margin="6,0,0,0">
-              <TextBlock Text="手动微调选中行（可多选）" FontWeight="SemiBold" />
-              <WrapPanel>
-                <Button Content="−1 帧" Tag="-1" Click="Nudge" Margin="0,0,6,6" />
-                <Button Content="+1 帧" Tag="1" Click="Nudge" Margin="0,0,6,6" />
-                <Button Content="−0.5 秒" Tag="-0.5s" Click="Nudge" Margin="0,0,6,6" />
-                <Button Content="+0.5 秒" Tag="0.5s" Click="Nudge" Margin="0,0,6,6" />
-              </WrapPanel>
-              <WrapPanel>
-                <Button Content="套用上一行的偏移" Click="CopyPrevShift" Margin="0,0,6,6" />
-                <Button x:Name="SaveBtn" Content="保存修改" Classes="accent" IsEnabled="False" Click="SaveEdits" Margin="0,0,6,6" />
-              </WrapPanel>
-              <TextBlock Text="画面对照（选中行的中点）" FontWeight="SemiBold" Margin="0,8,0,0" />
-              <TextBlock x:Name="SrcCaption" Text="源" FontSize="12" Opacity="0.8" />
-              <Border Background="#20808080" MinHeight="120"><Image x:Name="SrcImage" Stretch="Uniform" MaxHeight="200" /></Border>
-              <TextBlock x:Name="DstCaption" Text="目标" FontSize="12" Opacity="0.8" />
-              <Border Background="#20808080" MinHeight="120"><Image x:Name="DstImage" Stretch="Uniform" MaxHeight="200" /></Border>
+                <Expander x:Name="AdvancedPanel" Theme="{DynamicResource CardExpander}" Header="高级参数" HorizontalAlignment="Stretch">
+                  <Grid ColumnDefinitions="*,12,*" RowDefinitions="Auto,10,Auto,10,Auto,12,Auto">
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="搜索窗口 ±秒" />
+                      <NumericUpDown x:Name="OptWindow" Value="10" Minimum="1" Maximum="600" Increment="5" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" ToolTip.Tip="0 = 跟随目标视频">
+                      <TextBlock Classes="field" Text="分析帧率（0 = 自动）" />
+                      <NumericUpDown x:Name="OptFps" Value="0" Minimum="0" Maximum="120" Increment="1" FormatString="0.###" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" ToolTip.Tip="超过则视为该行没找到（0 完全一致，1 毫不相干）">
+                      <TextBlock Classes="field" Text="最大代价" />
+                      <NumericUpDown x:Name="OptMaxCost" Value="0.4" Minimum="0.05" Maximum="1" Increment="0.05" FormatString="0.00" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="2" Grid.Column="2" ToolTip.Tip="超过则写进检查日志">
+                      <TextBlock Classes="field" Text="提示代价" />
+                      <NumericUpDown x:Name="OptWarnCost" Value="0.2" Minimum="0.01" Maximum="1" Increment="0.05" FormatString="0.00" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="4" ToolTip.Tip="短于此长度的行会向两边扩展取样">
+                      <TextBlock Classes="field" Text="最短取样秒" />
+                      <NumericUpDown x:Name="OptMinLine" Value="1.5" Minimum="0.2" Maximum="10" Increment="0.5" FormatString="0.0" />
+                    </StackPanel>
+                    <StackPanel Grid.Row="4" Grid.Column="2">
+                      <TextBlock Classes="field" Text="内封字幕轨（从 0 起）" />
+                      <NumericUpDown x:Name="OptStream" Value="0" Minimum="0" Maximum="99" Increment="1" />
+                    </StackPanel>
+                    <WrapPanel Grid.Row="6" Grid.ColumnSpan="3">
+                      <ToggleSwitch x:Name="OptSnap" Content="吸附镜头切换" IsChecked="True" Margin="0,0,16,6"
+                                    ToolTip.Tip="原本卡在切镜头处的时间点，调整后也卡在目标视频的切镜头处" />
+                      <ToggleSwitch x:Name="OptHw" Content="硬件解码" Margin="0,0,16,6" />
+                      <ToggleSwitch x:Name="OptCache" Content="缓存画面指纹" IsChecked="True" Margin="0,0,16,6" />
+                    </WrapPanel>
+                  </Grid>
+                </Expander>
+
+                <Button x:Name="RunBtn" Theme="{DynamicResource SolidButton}" Classes="Primary Large" Content="开始调轴"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="RunSync" />
+                <Grid ColumnDefinitions="*,8,*">
+                  <Button x:Name="CancelBtn" Content="取消" IsEnabled="False" Click="Cancel" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                  <Button x:Name="OpenLogBtn" Grid.Column="2" Content="检查日志" IsEnabled="False" Click="ShowCheckLog"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                </Grid>
+                <StackPanel Spacing="6">
+                  <ProgressBar x:Name="Progress" Minimum="0" Maximum="1" />
+                  <TextBlock x:Name="Status" Classes="hint" Text="把源视频、字幕、目标视频拖进窗口即可" />
+                </StackPanel>
+              </StackPanel>
+            </ScrollViewer>
+
+            <!-- ============ results ============ -->
+            <Grid Grid.Column="2">
+              <StackPanel x:Name="EmptyHint" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" Opacity="0.55">
+                <Image Source="/Assets/icon.png" Width="72" Height="72" Opacity="0.5" />
+                <TextBlock Text="结果会显示在这里" HorizontalAlignment="Center" FontSize="15" />
+                <TextBlock Text="每行字幕的偏移、匹配代价与状态，可逐行对照画面并微调" Classes="hint" HorizontalAlignment="Center" />
+              </StackPanel>
+
+              <Grid x:Name="ResultsPanel" Classes="reveal" RowDefinitions="Auto,12,*" IsVisible="False">
+                <Grid ColumnDefinitions="*,Auto">
+                  <u:Banner x:Name="Summary" Type="Information" Header="调轴完成后，这里显示汇总" Content="共多少行、多少行需要检查、主要偏移是多少" />
+                  <ToggleSwitch x:Name="OnlyCheck" Grid.Column="1" Content="只看需检查" Margin="16,0,0,0" IsCheckedChanged="FilterChanged" />
+                </Grid>
+                <Grid Grid.Row="2" ColumnDefinitions="*,16,280">
+                  <Border x:Name="ResultsCard" Classes="card" Padding="0">
+                    <DataGrid x:Name="Grid" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="True"
+                              GridLinesVisibility="Horizontal" SelectionChanged="RowSelected">
+                      <DataGrid.Columns>
+                        <DataGridTextColumn Header="原开始" Binding="{Binding OldStart}" Width="Auto" />
+                        <DataGridTextColumn Header="新开始" Binding="{Binding NewStart}" Width="Auto" />
+                        <DataGridTextColumn Header="偏移" Binding="{Binding Shift}" Width="Auto" />
+                        <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="Auto" />
+                        <DataGridTextColumn Header="文本" Binding="{Binding Text}" Width="*" MinWidth="120" />
+                      </DataGrid.Columns>
+                    </DataGrid>
+                  </Border>
+
+                  <Border x:Name="PreviewCard" Grid.Column="2" Classes="card">
+                    <ScrollViewer>
+                      <StackPanel Spacing="8">
+                        <TextBlock Classes="h" Text="对照与微调" />
+                        <TextBlock Classes="hint" Text="选中一行（可多选），对不上就微调后保存" />
+                        <UniformGrid Columns="2" Margin="0,4,0,0">
+                          <Button Content="−1 帧" Tag="-1" Click="Nudge" Margin="0,0,4,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                          <Button Content="+1 帧" Tag="1" Click="Nudge" Margin="4,0,0,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                          <Button Content="−0.5 秒" Tag="-0.5s" Click="Nudge" Margin="0,4,4,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                          <Button Content="+0.5 秒" Tag="0.5s" Click="Nudge" Margin="4,4,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                        </UniformGrid>
+                        <Button Content="套用上一行的偏移" Click="CopyPrevShift" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                        <Button x:Name="SaveBtn" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="保存修改" IsEnabled="False"
+                                Click="SaveEdits" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                        <Separator Margin="0,6" />
+                        <TextBlock x:Name="SrcCaption" Classes="field" Text="源" />
+                        <Border CornerRadius="8" ClipToBounds="True" Background="{DynamicResource SemiColorFill0}" MinHeight="100">
+                          <Image x:Name="SrcImage" Stretch="Uniform" />
+                        </Border>
+                        <TextBlock x:Name="DstCaption" Classes="field" Text="目标" />
+                        <Border CornerRadius="8" ClipToBounds="True" Background="{DynamicResource SemiColorFill0}" MinHeight="100">
+                          <Image x:Name="DstImage" Stretch="Uniform" />
+                        </Border>
+                      </StackPanel>
+                    </ScrollViewer>
+                  </Border>
+                </Grid>
+              </Grid>
+            </Grid>
+          </Grid>
+        </TabItem>
+
+        <!-- ============ 批量 ============ -->
+        <TabItem x:Name="TabBatch" Header="批量">
+          <Grid ColumnDefinitions="340,20,*" Margin="0,12,0,0">
+            <StackPanel Spacing="12">
+              <Border Classes="card">
+                <StackPanel Spacing="12">
+                  <TextBlock Classes="h" Text="选择文件夹" />
+                  <StackPanel>
+                    <TextBlock Classes="field" Text="源目录（旧片源视频 + 同名前缀字幕，如 xx.sc.ass）" />
+                    <TextBox x:Name="BatchSrc" Watermark="拖入或浏览…">
+                      <TextBox.InnerRightContent>
+                        <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="BatchSrc" Click="BrowseFolder" Padding="8,0" />
+                      </TextBox.InnerRightContent>
+                    </TextBox>
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Classes="field" Text="目标目录（新片源视频）" />
+                    <TextBox x:Name="BatchDst" Watermark="拖入或浏览…">
+                      <TextBox.InnerRightContent>
+                        <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="BatchDst" Click="BrowseFolder" Padding="8,0" />
+                      </TextBox.InnerRightContent>
+                    </TextBox>
+                  </StackPanel>
+                  <StackPanel>
+                    <TextBlock Classes="field" Text="输出目录（留空 = 目标目录）" />
+                    <TextBox x:Name="BatchOut" Watermark="自动">
+                      <TextBox.InnerRightContent>
+                        <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="BatchOut" Click="BrowseFolder" Padding="8,0" />
+                      </TextBox.InnerRightContent>
+                    </TextBox>
+                  </StackPanel>
+                  <TextBlock Classes="hint" Text="按集数配对（认不出集数时按文件名顺序）；没有外挂字幕的视频使用内封字幕。调轴参数沿用「画面调轴」页的高级参数。" />
+                </StackPanel>
+              </Border>
+              <Button Content="预览配对" Click="ScanBatch" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+              <Button x:Name="BatchRunBtn" Theme="{DynamicResource SolidButton}" Classes="Primary Large" Content="开始批量调轴"
+                      HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="RunBatch" />
+              <Button x:Name="BatchCancelBtn" Content="取消" IsEnabled="False" Click="Cancel" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+              <ProgressBar x:Name="BatchProgress" Minimum="0" Maximum="1" />
+            </StackPanel>
+            <Border Grid.Column="2" Classes="card" Padding="4">
+              <TextBox x:Name="BatchLog" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" BorderThickness="0" Background="Transparent"
+                       FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12" Watermark="配对结果和处理日志会显示在这里" />
+            </Border>
+          </Grid>
+        </TabItem>
+
+        <!-- ============ 工具 ============ -->
+        <TabItem x:Name="TabTools" Header="工具">
+          <ScrollViewer Margin="0,12,0,0">
+            <StackPanel Spacing="12" MaxWidth="860" HorizontalAlignment="Left">
+              <Border Classes="card">
+                <StackPanel>
+                  <TextBlock Classes="field" Text="字幕文件（.ass / .ssa / .srt，任意编码）" />
+                  <TextBox x:Name="ToolSub" Watermark="拖入或浏览…">
+                    <TextBox.InnerRightContent>
+                      <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Click="BrowseToolSub" Padding="8,0" />
+                    </TextBox.InnerRightContent>
+                  </TextBox>
+                </StackPanel>
+              </Border>
+
+              <Border Classes="card">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="h" Text="整体 / 区间平移" />
+                  <TextBlock Classes="hint" Text="填「偏移」直接平移；或者填同一句话在旧片源与新片源中的时间，自动算偏移。区间留空 = 全部行。时间格式 0:10:35.20 / 10:35 / 635.2" />
+                  <Grid ColumnDefinitions="*,12,*,12,*">
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="偏移（秒）" />
+                      <TextBox x:Name="ShiftOffset" Watermark="-1.5" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Classes="field" Text="或：原时间" />
+                      <TextBox x:Name="ShiftFrom" Watermark="0:10:35.00" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                      <TextBlock Classes="field" Text="→ 目标时间" />
+                      <TextBox x:Name="ShiftTo" Watermark="0:12:03.00" />
+                    </StackPanel>
+                  </Grid>
+                  <Grid ColumnDefinitions="*,12,*,12,*">
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="只处理开始时间 ≥" />
+                      <TextBox x:Name="RangeStart" Watermark="（开头）" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Classes="field" Text="且 &lt;" />
+                      <TextBox x:Name="RangeEnd" Watermark="（结尾）" />
+                    </StackPanel>
+                    <Button Grid.Column="4" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="平移" Click="ToolShift"
+                            VerticalAlignment="Bottom" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <Grid ColumnDefinitions="*,12,*">
+                <Border Classes="card">
+                  <StackPanel Spacing="10">
+                    <TextBlock Classes="h" Text="帧率转换" />
+                    <TextBlock Classes="hint" Text="同一批帧换播放速度，如 PAL 25 → 23.976" />
+                    <Grid ColumnDefinitions="*,8,*,8,Auto">
+                      <ComboBox x:Name="FpsFrom" IsEditable="True" Text="25" ItemsSource="{x:Static local:MainWindow.CommonFps}" HorizontalAlignment="Stretch" />
+                      <ComboBox x:Name="FpsTo" Grid.Column="2" IsEditable="True" Text="23.976" ItemsSource="{x:Static local:MainWindow.CommonFps}" HorizontalAlignment="Stretch" />
+                      <Button Grid.Column="4" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="转换" Click="ToolFps" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Classes="card">
+                  <StackPanel Spacing="10">
+                    <TextBlock Classes="h" Text="编码转换" />
+                    <TextBlock Classes="hint" Text="自动识别 UTF-8 / UTF-16 / GBK / BIG5，另存为 UTF-8 BOM（覆盖原文件）" />
+                    <Button Theme="{DynamicResource SolidButton}" Classes="Primary" Content="转为 UTF-8" Click="ToolEncode" HorizontalAlignment="Left" />
+                  </StackPanel>
+                </Border>
+              </Grid>
+
+              <Border Classes="card">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="4">
+                    <TextBlock Classes="h" Text="画面指纹缓存" />
+                    <TextBlock x:Name="CacheInfo" Classes="hint" />
+                  </StackPanel>
+                  <Button Grid.Column="1" Theme="{DynamicResource OutlineButton}" Classes="Danger" Content="清空缓存" Click="ClearCache" VerticalAlignment="Center" />
+                </Grid>
+              </Border>
+
+              <TextBlock x:Name="ToolStatus" TextWrapping="Wrap" />
             </StackPanel>
           </ScrollViewer>
-        </Grid>
-      </Grid>
-    </TabItem>
+        </TabItem>
+      </TabControl>
+    </DockPanel>
 
-    <!-- ============ 批量 ============ -->
-    <TabItem Header="批量">
-      <Grid RowDefinitions="Auto,Auto,Auto,*" Margin="4">
-        <Grid ColumnDefinitions="90,*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="6">
-          <TextBlock Classes="label" Text="源目录" />
-          <TextBox x:Name="BatchSrc" Grid.Column="1" Watermark="旧片源视频 + 字幕（字幕与视频同名前缀，如 xx.sc.ass / xx.tc.ass）" />
-          <Button Grid.Column="2" Content="浏览…" Tag="BatchSrc" Click="BrowseFolder" />
-          <TextBlock Grid.Row="1" Classes="label" Text="目标目录" />
-          <TextBox x:Name="BatchDst" Grid.Row="1" Grid.Column="1" Watermark="新片源视频" />
-          <Button Grid.Row="1" Grid.Column="2" Content="浏览…" Tag="BatchDst" Click="BrowseFolder" />
-          <TextBlock Grid.Row="2" Classes="label" Text="输出目录" />
-          <TextBox x:Name="BatchOut" Grid.Row="2" Grid.Column="1" Watermark="留空 = 输出到目标目录" />
-          <Button Grid.Row="2" Grid.Column="2" Content="浏览…" Tag="BatchOut" Click="BrowseFolder" />
-        </Grid>
-        <TextBlock Grid.Row="1" Margin="0,8" FontSize="12" Opacity="0.8"
-                   Text="按集数配对（认不出集数时按文件名顺序）；没有外挂字幕的视频会使用内封字幕。调轴参数沿用「画面调轴」页。" TextWrapping="Wrap" />
-        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-          <Button Content="预览配对" Click="ScanBatch" />
-          <Button x:Name="BatchRunBtn" Content="开始批量调轴" Classes="accent" Click="RunBatch" />
-          <Button x:Name="BatchCancelBtn" Content="取消" IsEnabled="False" Click="Cancel" />
-          <ProgressBar x:Name="BatchProgress" Minimum="0" Maximum="1" Width="260" Height="6" VerticalAlignment="Center" />
-        </StackPanel>
-        <TextBox x:Name="BatchLog" Grid.Row="3" IsReadOnly="True" AcceptsReturn="True" FontFamily="Consolas,Menlo,monospace" FontSize="12"
-                 TextWrapping="NoWrap" />
-      </Grid>
-    </TabItem>
-
-    <!-- ============ 工具 ============ -->
-    <TabItem Header="工具">
-      <ScrollViewer>
-        <StackPanel Margin="4" MaxWidth="900" HorizontalAlignment="Left">
-          <Grid ColumnDefinitions="90,*,Auto" ColumnSpacing="6" Margin="0,0,0,12">
-            <TextBlock Classes="label" Text="字幕文件" />
-            <TextBox x:Name="ToolSub" Grid.Column="1" Watermark=".ass / .ssa / .srt，任意编码" />
-            <Button Grid.Column="2" Content="浏览…" Click="BrowseToolSub" />
-          </Grid>
-
-          <StackPanel Classes="section"><TextBlock Classes="h" Text="整体 / 区间平移" />
-            <StackPanel Spacing="6">
-              <TextBlock FontSize="12" Opacity="0.8" TextWrapping="Wrap"
-                         Text="填「偏移」直接平移；或者填同一句话在旧片源与新片源中的时间，自动算偏移。区间留空 = 全部行。时间格式 0:10:35.20 / 10:35 / 635.2" />
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Classes="label" Text="偏移(秒)" />
-                <TextBox x:Name="ShiftOffset" Width="110" Watermark="-1.5" />
-                <TextBlock Classes="label" Text="或  原时间" Margin="12,0,8,0" />
-                <TextBox x:Name="ShiftFrom" Width="120" Watermark="0:10:35.00" />
-                <TextBlock Classes="label" Text="→ 目标时间" />
-                <TextBox x:Name="ShiftTo" Width="120" Watermark="0:12:03.00" />
-              </StackPanel>
-              <StackPanel Orientation="Horizontal" Spacing="6">
-                <TextBlock Classes="label" Text="只处理开始时间在" />
-                <TextBox x:Name="RangeStart" Width="120" Watermark="(开头)" />
-                <TextBlock Classes="label" Text="到" />
-                <TextBox x:Name="RangeEnd" Width="120" Watermark="(结尾)" />
-                <TextBlock Classes="label" Text="之间的行" />
-                <Button Content="平移" Classes="accent" Click="ToolShift" />
-              </StackPanel>
-            </StackPanel>
-          </StackPanel>
-
-          <StackPanel Classes="section"><TextBlock Classes="h" Text="帧率转换（同一批帧换播放速度，如 PAL 25 → 23.976）" />
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Classes="label" Text="源帧率" />
-              <ComboBox x:Name="FpsFrom" Width="130" IsEditable="True" Text="25" ItemsSource="{x:Static local:MainWindow.CommonFps}" />
-              <TextBlock Classes="label" Text="→ 目标帧率" />
-              <ComboBox x:Name="FpsTo" Width="130" IsEditable="True" Text="23.976" ItemsSource="{x:Static local:MainWindow.CommonFps}" />
-              <Button Content="转换" Classes="accent" Click="ToolFps" />
-            </StackPanel>
-          </StackPanel>
-
-          <StackPanel Classes="section"><TextBlock Classes="h" Text="编码转换" />
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Classes="label" Text="自动识别 UTF-8 / UTF-16 / GBK / BIG5，另存为 UTF-8 BOM（覆盖原文件）" />
-              <Button Content="转为 UTF-8" Classes="accent" Click="ToolEncode" />
-            </StackPanel>
-          </StackPanel>
-
-          <StackPanel Classes="section"><TextBlock Classes="h" Text="缓存" />
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock x:Name="CacheInfo" Classes="label" />
-              <Button Content="清空画面指纹缓存" Click="ClearCache" />
-            </StackPanel>
-          </StackPanel>
-
-          <TextBlock x:Name="ToolStatus" TextWrapping="Wrap" Margin="0,4" />
-        </StackPanel>
-      </ScrollViewer>
-    </TabItem>
-  </TabControl>
+    <local:TourOverlay x:Name="Tour" />
+  </Grid>
 </Window>

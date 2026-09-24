@@ -3,7 +3,10 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Notifications;
+using Avalonia.Styling;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
@@ -44,6 +47,8 @@ public partial class MainWindow : Window
     string _resultSrc = "", _resultDst = "";
     readonly ObservableCollection<Row> _rows = [];
     bool _dirty;
+    readonly AppSettings _settings = AppSettings.Load();
+    WindowNotificationManager? _toasts;
 
     public MainWindow() : this([]) { }
 
@@ -56,6 +61,69 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
         AddHandler(DragDrop.DropEvent, OnDrop);
         Tabs.SelectionChanged += (_, _) => { if (Tabs.SelectedIndex == 2) UpdateCacheInfo(); };
+
+        ApplyTheme(_settings.Theme);
+        Tour.Closed += _ => { _settings.TourDone = true; _settings.Save(); HideEmptyResults(); };
+        Opened += (_, _) =>
+        {
+            _toasts = new WindowNotificationManager(this) { Position = NotificationPosition.TopRight, MaxItems = 3 };
+            if (!_settings.TourDone) StartTour(null, null!); // first launch; skipping or finishing both count as seen
+        };
+    }
+
+    // ---------------- theme / tour / toasts ----------------
+
+    void Toast(string title, string message, NotificationType type) => _toasts?.Show(new Notification(title, message, type, TimeSpan.FromSeconds(5)));
+
+    void ApplyTheme(string theme)
+    {
+        if (Application.Current is not { } app) return;
+        app.RequestedThemeVariant = theme switch { "Dark" => ThemeVariant.Dark, "Light" => ThemeVariant.Light, _ => ThemeVariant.Default };
+        ThemeBtn.Content = app.ActualThemeVariant == ThemeVariant.Dark ? "浅色模式" : "深色模式";
+    }
+
+    void ToggleTheme(object? sender, RoutedEventArgs e)
+    {
+        _settings.Theme = Application.Current?.ActualThemeVariant == ThemeVariant.Dark ? "Light" : "Dark";
+        ApplyTheme(_settings.Theme);
+        _settings.Save();
+    }
+
+    internal void StartTour(object? sender, RoutedEventArgs e)
+    {
+        void OnSync() => Tabs.SelectedIndex = 0;
+        // Results-area steps need the panel on screen; show the empty frame if nothing has run yet.
+        void OnResults() { OnSync(); if (!ResultsPanel.IsVisible) { ResultsPanel.IsVisible = true; ResultsPanel.Classes.Add("shown"); EmptyHint.IsVisible = false; } }
+        Tour.Start(
+        [
+            new(() => null, "欢迎使用 SubMatcher",
+                "用画面给字幕调轴：拿每行字幕出现时的画面，去新片源里找同样的画面，把时间轴搬过去。花 30 秒走一遍，随时可以跳过。"),
+            new(() => FilesCard, "① 选择文件",
+                "源视频 + 源字幕是旧片源（TV / Web），目标视频是新片源（BD）。源字幕留空会用源视频的内封字幕。\n也可以直接把文件拖进窗口：第一个视频算源，第二个算目标。", OnSync),
+            new(() => AdvancedPanel, "② 高级参数（一般不用动）",
+                "画面对不上时调大「最大代价」；两个片源相差很远时调大「搜索窗口」。", OnSync),
+            new(() => RunBtn, "③ 开始调轴",
+                "解码 → 匹配 → 输出到目标视频旁边，另附一份 .check.log。同一个视频第二次跑会用缓存，几乎是秒出。", OnSync),
+            new(() => ResultsCard, "④ 检查结果",
+                "每行的偏移、匹配代价和状态。带 ⚠ 的行值得看一眼，打开右上角「只看需检查」可以快速过一遍。", OnResults),
+            new(() => PreviewCard, "⑤ 对照与微调",
+                "选中一行，这里并排显示新旧两边同一时刻的画面。对不上就 ±1 帧 / ±0.5 秒 微调，然后保存。", OnResults),
+            new(() => TabBatch, "批量",
+                "整季处理：选两个文件夹，按集数自动配对，外挂字幕和内封字幕都支持。", HideEmptyResults),
+            new(() => TabTools, "工具",
+                "手动平移（可只平移某个区间）、帧率转换、任意编码转 UTF-8。"),
+            new(() => TourBtn, "随时重看",
+                "以后想再看一遍，点这里就行。"),
+        ]);
+    }
+
+    /// <summary>Undo the tour's placeholder results frame when nothing has actually run.</summary>
+    void HideEmptyResults()
+    {
+        if (_result != null) return;
+        ResultsPanel.IsVisible = false;
+        ResultsPanel.Classes.Remove("shown");
+        EmptyHint.IsVisible = true;
     }
 
     // ---------------- drag & drop / pickers ----------------
@@ -166,10 +234,11 @@ public partial class MainWindow : Window
             ShowResult(_result, src, dst);
             File.WriteAllText(Path.ChangeExtension(_result.OutputPath, ".check.log"), _result.CheckLog, new UTF8Encoding(true));
             OpenLogBtn.IsEnabled = true;
-            Status.Text = $"完成（{sw.Elapsed.TotalSeconds:0.0}s）：{_result.Events.Count} 行，需检查 {_result.NeedsCheckCount} 行 → {_result.OutputPath}";
+            Status.Text = $"完成，用时 {sw.Elapsed.TotalSeconds:0.0}s → {_result.OutputPath}";
+            Toast("调轴完成", $"{_result.Events.Count} 行，需检查 {_result.NeedsCheckCount} 行", _result.NeedsCheckCount == 0 ? NotificationType.Success : NotificationType.Information);
         }
         catch (OperationCanceledException) { Status.Text = "已取消"; }
-        catch (Exception ex) { Status.Text = "失败：" + ex.Message; }
+        catch (Exception ex) { Status.Text = "失败：" + ex.Message; Toast("调轴失败", ex.Message, NotificationType.Error); }
         finally { SetBusy(false); Progress.Value = 0; }
     }
 
@@ -179,6 +248,18 @@ public partial class MainWindow : Window
         _rows.Clear();
         foreach (var r in result.Events.OrderBy(r => r.OldStart)) _rows.Add(new Row(r, result.Fps));
         ApplyFilter();
+
+        int check = result.NeedsCheckCount;
+        var shifts = result.Events.GroupBy(r => r.ShiftFrames).OrderByDescending(g => g.Count()).Take(3)
+            .Select(g => $"{g.Key / result.Fps:+0.000;-0.000}s × {g.Count()}");
+        Summary.Type = check == 0 ? NotificationType.Success : NotificationType.Warning;
+        Summary.Header = check == 0 ? $"全部 {result.Events.Count} 行都对上了" : $"{result.Events.Count} 行，{check} 行需要检查";
+        Summary.Content = "主要偏移：" + string.Join("，", shifts);
+        EmptyHint.IsVisible = false;
+        ResultsPanel.IsVisible = true;
+        // Next frame so the transition runs from the hidden state.
+        ResultsPanel.Classes.Remove("shown");
+        Dispatcher.UIThread.Post(() => ResultsPanel.Classes.Add("shown"), DispatcherPriority.Render);
     }
 
     void Cancel(object? sender, RoutedEventArgs e) => _cts?.Cancel();
