@@ -58,7 +58,7 @@ dotnet run --project src/SubMatcher.Gui
 
 ## 发布
 
-推送 `v*` tag（如 `git tag v0.1.0 && git push origin v0.1.0`）会触发 GitHub Actions：先跑测试，再为 win-x64 / linux-x64 / osx-arm64 / osx-x64 各打两个便携 zip（带和不带最新稳定版 ffmpeg），最后发布到 Releases。在 Actions 页手动运行则只产出构建产物、不发布。
+在 GitHub 的 Actions → Release → Run workflow 点一下即可：版本号自动递增（首个 v0.1.0，之后每次 +0.0.1），先跑测试，再为 win-x64 / linux-x64 / osx-arm64 / osx-x64 各打两个便携 zip（带和不带最新稳定版 ffmpeg），发布到 Releases 并自动打 tag。勾选「只构建，不发布」可以试跑。需要跳大版本时手动推 tag（如 `git tag v0.2.0 && git push origin v0.2.0`），之后会从它继续递增。
 
 ## 限制
 
