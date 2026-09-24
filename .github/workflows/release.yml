@@ -85,7 +85,7 @@ jobs:
               # martin-riedl.de static builds (BtbN has no macOS).
               arch=$([[ "$RID" == osx-arm64 ]] && echo arm64 || echo amd64)
               for b in ffmpeg ffprobe; do
-                curl -fsSL -o "ff/$b.zip" "https://ffmpeg.martin-riedl.de/redirect/latest/macos/$arch/release/$b.zip"
+                url=$(curl -fsSL -o "ff/$b.zip" -w "%{url_effective}" "https://ffmpeg.martin-riedl.de/redirect/latest/macos/$arch/release/$b.zip")
                 unzip -o -q "ff/$b.zip" -d "$DIR"
               done
               chmod +x "$DIR/ffmpeg" "$DIR/ffprobe"
@@ -93,8 +93,8 @@ jobs:
               src="https://ffmpeg.martin-riedl.de ($arch, latest release)"
               ;;
           esac
-          ver=unknown
-          if [[ "$RID" != osx-x64 ]]; then ver=$("$DIR"/ffmpeg* -version | head -1); fi
+          # osx-x64 is cross-built on arm64 and can't run its ffmpeg; take the version from the download URL (…_9.0.2/ffmpeg.zip).
+          if [[ "$RID" == osx-x64 ]]; then ver="ffmpeg ${url##*_}"; ver="${ver%%/*}"; else ver=$("$DIR"/ffmpeg* -version | head -1); fi
           printf 'Bundled FFmpeg: %s\nSource: %s\nFFmpeg is licensed under the GPL; its source code is available at https://ffmpeg.org/download.html\n' \
             "$ver" "$src" > "$DIR/FFMPEG-NOTICE.txt"
           cat "$DIR/FFMPEG-NOTICE.txt"
