@@ -22,7 +22,7 @@ public sealed class Row(EventResult r, double fps) : INotifyPropertyChanged
     public int Number => R.Index + 1;
     public string OldStart => SubtitleDoc.FormatAssTime(R.OldStart);
     public string NewStart => SubtitleDoc.FormatAssTime(R.NewStart);
-    public string Shift => $"{R.ShiftMs / 1000.0:+0.000;-0.000}";
+    public string Shift => $"{Math.Round(R.ShiftMs * fps / 1000):+0;-0;0} 帧";
     public string Cost => R.Cost.ToString("0.000");
     public string StatusText => (R.NeedsCheck ? "⚠ " : "") + Sync.StatusText(R.Status) + (R.IsComment ? " · 注释" : "");
     public string Text => R.Text;
@@ -273,7 +273,7 @@ public partial class MainWindow : Window
 
         int check = result.NeedsCheckCount;
         var shifts = result.Events.GroupBy(r => r.ShiftFrames).OrderByDescending(g => g.Count()).Take(3)
-            .Select(g => $"{g.Key / result.Fps:+0.000;-0.000}s × {g.Count()}");
+            .Select(g => $"{Sync.FormatShift(g.Key, result.Fps)} × {g.Count()}");
         Summary.Type = check == 0 ? NotificationType.Success : NotificationType.Warning;
         Summary.Header = check == 0 ? $"全部 {result.Events.Count} 行都对上了" : $"{result.Events.Count} 行，{check} 行需要检查";
         Summary.Content = "主要偏移：" + string.Join("，", shifts);

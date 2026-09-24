@@ -44,6 +44,7 @@ public static class Sync
         IProgress<SyncProgress>? progress = null, CancellationToken ct = default)
     {
         output ??= DefaultOutput(srcVideo, srcSub, dstVideo);
+        foreach (var v in new[] { srcVideo, dstVideo }) RejectPartial(v);
 
         SubtitleDoc doc;
         if (string.IsNullOrEmpty(srcSub))
@@ -68,8 +69,10 @@ public static class Sync
         var tb = Fingerprint.FromVideo(dstVideo, fps, o.HwAccel, o.UseCache, f => { doneB = f; Report(); }, ct);
         var a = await ta;
         var b = await tb;
+        CheckComplete(srcVideo, srcInfo, a);
+        CheckComplete(dstVideo, dstInfo, b);
 
-        var matcher = new Matcher(a, b, o);
+        var matcher = new Matcher(a, b, o) { SourceStartMs = srcInfo.VideoStartMs, TargetStartMs = dstInfo.VideoStartMs };
         var results = await Task.Run(() => matcher.Match(doc.Events,
             new Progress<double>(f => progress?.Report(new("匹配画面", 0.85 + f * 0.15))), ct), ct);
 
@@ -82,11 +85,19 @@ public static class Sync
         return new SyncResult { Events = results, Doc = doc, OutputPath = output, Fps = fps, CheckLog = log };
     }
 
-    /// <summary>Like Sushi's _check.log: where the shift changes, and every line the matcher wasn't sure about.</summary>
+    /// <summary>
+    /// Like Sushi's _check.log: the shift distribution, where the shift changes, every line the matcher wasn't sure
+    /// about, and a list of typesetting (signs) to spot-check frame by frame in the target.
+    /// </summary>
     public static string BuildCheckLog(List<EventResult> events, double fps, string src, string dst)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"源: {src}").AppendLine($"目标: {dst}").AppendLine($"分析帧率: {fps:0.###}").AppendLine();
+        sb.AppendLine("偏移分布（整帧）:");
+        foreach (var g in events.Where(e => !e.IsComment).GroupBy(e => e.ShiftFrames).OrderByDescending(g => g.Count()))
+            sb.AppendLine($"  {FormatShift(g.Key, fps)} × {g.Count()} 行");
+        sb.AppendLine();
+
         var sorted = events.OrderBy(e => e.OldStart).ToList();
         int? last = null;
         int issues = 0;
@@ -101,12 +112,52 @@ public static class Sync
             issues++;
             sb.AppendLine($"{SubtitleDoc.FormatAssTime(e.OldStart)} → {SubtitleDoc.FormatAssTime(e.NewStart)}  {reason}  | {Trim(e.Text)}");
         }
+
+        // Signs grouped by time (< 0.6 s apart) so a whole animated title shows up as one entry.
+        var signs = sorted.Where(e => e.IsSign && !e.IsComment).ToList();
+        if (signs.Count > 0)
+        {
+            sb.AppendLine().AppendLine($"屏幕字清单（{signs.Count} 行，建议在目标视频里逐帧抽查）:");
+            var group = new List<EventResult>();
+            void Flush()
+            {
+                if (group.Count == 0) return;
+                var f = group[0];
+                string flag = group.Any(x => x.NeedsCheck) ? "  ⚠ " + string.Join("、", group.Where(x => x.NeedsCheck).Select(x => StatusText(x.Status)).Distinct()) : "";
+                sb.AppendLine($"  {SubtitleDoc.FormatAssTime(group.Min(x => x.NewStart))} - {SubtitleDoc.FormatAssTime(group.Max(x => x.NewEnd))}" +
+                              $"  {FormatShift(f.ShiftFrames, fps)}  {(group.Count > 1 ? group.Count + " 行" : "")}{flag}  | {Trim(f.Text)}");
+                group.Clear();
+            }
+            foreach (var e in signs)
+            {
+                if (group.Count > 0 && e.OldStart - group.Max(x => x.OldEnd) >= 600) Flush();
+                group.Add(e);
+            }
+            Flush();
+        }
         sb.Insert(0, $"需检查 {issues} 处 / 共 {events.Count} 行{Environment.NewLine}");
         return sb.ToString();
     }
 
     static string Trim(string s) => s.Length > 60 ? s[..60] + "…" : s;
-    static string FormatShift(int frames, double fps) => $"{frames * 1.0 / fps:+0.000;-0.000}s";
+    public static string FormatShift(int frames, double fps) => $"{frames:+0;-0;0} 帧 ({frames / fps:+0.000;-0.000;0.000}s)";
+
+    /// <summary>Half-downloaded files decode to garbage offsets; refuse them by name before spending minutes decoding.</summary>
+    static void RejectPartial(string path)
+    {
+        foreach (var ext in new[] { ".!qb", ".!ut", ".part", ".crdownload", ".bc!", ".td", ".downloading" })
+            if (path.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"文件还没下载完：{Path.GetFileName(path)}");
+    }
+
+    /// <summary>A truncated file still carries the full duration in its header but decodes to far fewer frames.</summary>
+    internal static void CheckComplete(string path, VideoInfo info, Fingerprint fp)
+    {
+        double expected = info.DurationSeconds * fp.Fps;
+        if (expected > 60 * fp.Fps && fp.Count < expected * 0.97 - fp.Fps)
+            throw new InvalidOperationException(
+                $"{Path.GetFileName(path)} 只解出 {fp.Count / fp.Fps:0} 秒画面，文件标称 {info.DurationSeconds:0} 秒：可能没下载完或已损坏。");
+    }
 
     public static string StatusText(MatchStatus s) => s switch
     {
@@ -116,6 +167,8 @@ public static class Sync
         MatchStatus.Smoothed => "已平滑",
         MatchStatus.Static => "静态·沿用邻近",
         MatchStatus.Inherited => "未匹配·沿用邻近",
+        MatchStatus.Empty => "空行·沿用邻近",
+        MatchStatus.CutMiss => "屏幕字未落在切点",
         MatchStatus.OutOfRange => "超出源视频",
         _ => s.ToString(),
     };

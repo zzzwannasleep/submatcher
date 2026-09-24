@@ -129,7 +129,7 @@ async Task<int> RunSync(string src, string? sub, string dst, string? output)
     Console.WriteLine($"输出: {r.OutputPath}");
     Console.WriteLine($"共 {r.Events.Count} 行，需检查 {r.NeedsCheckCount} 行");
     foreach (var g in r.Events.GroupBy(e => e.ShiftFrames).OrderByDescending(g => g.Count()).Take(5))
-        Console.WriteLine($"  偏移 {g.Key / r.Fps:+0.000;-0.000}s × {g.Count()} 行");
+        Console.WriteLine($"  偏移 {Sync.FormatShift(g.Key, r.Fps)} × {g.Count()} 行");
     if (!Flag("no-log"))
     {
         var log = Path.ChangeExtension(r.OutputPath, ".check.log");

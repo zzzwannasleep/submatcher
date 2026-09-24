@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 
 namespace SubMatcher.Core;
 
-public sealed record VideoInfo(double Fps, double DurationSeconds);
+/// <param name="VideoStartMs">First video frame's time relative to the container start (0 for most mkv/mp4).</param>
+public sealed record VideoInfo(double Fps, double DurationSeconds, double VideoStartMs = 0);
 
 /// <summary>Thin wrapper around the ffmpeg/ffprobe executables (next to the app, in SUBMATCHER_FFMPEG, or on PATH).</summary>
 public static class FFmpeg
@@ -46,17 +48,23 @@ public static class FFmpeg
 
     public static async Task<VideoInfo> Probe(string path, CancellationToken ct = default)
     {
-        var text = await RunText("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate,r_frame_rate:format=duration", "-of", "default=nw=1", path], ct);
-        double fps = 0, dur = 0;
-        foreach (var line in text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
-        {
-            var kv = line.Split('=', 2);
-            if (kv.Length < 2) continue;
-            if (kv[0] == "duration") double.TryParse(kv[1], CultureInfo.InvariantCulture, out dur);
-            else if (fps == 0 || kv[0] == "avg_frame_rate") { var f = ParseRate(kv[1]); if (f > 0) fps = f; }
-        }
-        if (fps <= 0) throw new InvalidOperationException($"读不到视频流：{path}");
-        return new VideoInfo(fps, dur);
+        var json = await RunText("ffprobe", ["-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=avg_frame_rate,r_frame_rate,start_time:format=duration,start_time", "-of", "json", path], ct);
+        using var doc = JsonDocument.Parse(json); // JsonDocument: reflection-free, fine under Native AOT
+        var root = doc.RootElement;
+        string? Str(JsonElement e, string name) => e.TryGetProperty(name, out var v) ? v.GetString() : null;
+        double Num(string? s) => double.TryParse(s, CultureInfo.InvariantCulture, out var d) ? d : 0;
+
+        var stream = root.TryGetProperty("streams", out var ss) && ss.GetArrayLength() > 0 ? ss[0] : default;
+        if (stream.ValueKind != JsonValueKind.Object) throw new InvalidOperationException($"读不到视频流：{path}");
+        double fps = ParseRate(Str(stream, "avg_frame_rate") ?? "");
+        if (fps <= 0) fps = ParseRate(Str(stream, "r_frame_rate") ?? "");
+        if (fps <= 0) throw new InvalidOperationException($"读不到视频帧率：{path}");
+        var format = root.TryGetProperty("format", out var f) ? f : default;
+        double dur = format.ValueKind == JsonValueKind.Object ? Num(Str(format, "duration")) : 0;
+        // Players show time relative to the container start; the first video frame may come later (m2ts/ts often do).
+        double start = Num(Str(stream, "start_time")) - (format.ValueKind == JsonValueKind.Object ? Num(Str(format, "start_time")) : 0);
+        return new VideoInfo(fps, dur, Math.Max(0, start) * 1000);
     }
 
     static double ParseRate(string s)

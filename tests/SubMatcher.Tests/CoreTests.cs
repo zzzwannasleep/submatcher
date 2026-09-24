@@ -105,11 +105,88 @@ public class CoreTests
 
         foreach (var r in results)
         {
-            if (r.OldEnd <= 50_000) Assert.Equal(3000, r.ShiftMs);
-            else if (r.OldStart >= 55_000) Assert.Equal(-2000, r.ShiftMs);
+            if (r.OldEnd <= 50_000) AssertFrameExact(r, 72, Fps);
+            else if (r.OldStart >= 55_000) AssertFrameExact(r, -48, Fps);
             else Assert.True(r.NeedsCheck, $"line at {r.OldStart} sits in removed footage and must be flagged");
         }
         // Only lines touching the removed footage (49–51 s straddles the cut, 53–55 s is gone) get flagged; no noise elsewhere.
         Assert.Equal(results.Count(r => r.OldEnd > 50_000 && r.OldStart < 55_000), results.Count(r => r.NeedsCheck));
+    }
+
+    /// <summary>The frame a renderer switches a line on at: the first frame with pts ≥ t.</summary>
+    static long FrameOf(long ms, double fps) => (long)Math.Ceiling(ms * fps / 1000 - 1e-6);
+
+    /// <summary>Shifted by exactly `frames`, and still on that frame after being written as ASS centiseconds.</summary>
+    static void AssertFrameExact(EventResult r, int frames, double fps)
+    {
+        Assert.Equal(frames, r.ShiftFrames);
+        foreach (var (oldT, newT) in new[] { (r.OldStart, r.NewStart), (r.OldEnd, r.NewEnd) })
+        {
+            SubtitleDoc.TryParseAssTime(SubtitleDoc.FormatAssTime(newT), out var written);
+            Assert.Equal(FrameOf(oldT, fps) + frames, FrameOf(written, fps));
+        }
+    }
+
+    [Fact]
+    public void SignsStayOnTheirFrameThroughCentisecondRounding()
+    {
+        // NTSC rate, 24-frame shift (the Meido case: +1.001 s; a naive +0.955 s or +1.00 s lands a frame off for some lines).
+        const double fps = 24000 / 1001.0;
+        var src = SyntheticVideo(60 * 24, 3);
+        var dst = new byte[24 * Fingerprint.Dim].Select(_ => (byte)16).Concat(src).ToArray();
+        // Lines timed the way Aegisub does it (frame midpoints), at every phase of the 41.7 ms frame.
+        var lines = Enumerable.Range(0, 40).Select(i =>
+        {
+            long s = (long)Math.Round((100 + i * 31 - 0.5) * 1000 / fps), e = (long)Math.Round((100 + i * 31 + 40 - 0.5) * 1000 / fps);
+            return $"Dialogue: 0,{SubtitleDoc.FormatAssTime(s)},{SubtitleDoc.FormatAssTime(e)},Sign,,0,0,0,,{{\\pos(100,100)}}sign{i}\n";
+        });
+        var doc = SubtitleDoc.Parse("[Events]\n" + string.Concat(lines), SubFormat.Ass);
+        var results = new Matcher(new Fingerprint(src, fps), new Fingerprint(dst, fps), new SyncOptions()).Match(doc.Events);
+        Assert.All(results, r => { Assert.True(r.IsSign); AssertFrameExact(r, 24, fps); });
+    }
+
+    [Fact]
+    public void FrameByFrameAnimationMovesAsOneUnit()
+    {
+        var src = SyntheticVideo(60 * Fps, 4);
+        var dst = new byte[36 * Fingerprint.Dim].Select(_ => (byte)16).Concat(src).ToArray();
+        // 120 one-frame lines (a 5 s animated title) plus normal dialogue around it.
+        var sb = new System.Text.StringBuilder("[Events]\n");
+        for (int i = 0; i < 120; i++)
+            sb.Append($"Dialogue: 0,{SubtitleDoc.FormatAssTime((long)((480 + i) * 1000.0 / Fps))},{SubtitleDoc.FormatAssTime((long)((481 + i) * 1000.0 / Fps))},T,,0,0,0,,{{\\fscx{100 + i}}}雪\n");
+        for (int i = 0; i < 10; i++)
+            sb.Append($"Dialogue: 0,{SubtitleDoc.FormatAssTime(1000 + i * 5000L)},{SubtitleDoc.FormatAssTime(3000 + i * 5000L)},D,,0,0,0,,line{i}\n");
+        var results = new Matcher(new Fingerprint(src, Fps), new Fingerprint(dst, Fps), new SyncOptions()).Match(SubtitleDoc.Parse(sb.ToString(), SubFormat.Ass).Events);
+        Assert.All(results, r => AssertFrameExact(r, 36, Fps));
+    }
+
+    [Fact]
+    public void PlaceholderAndStaticLinesFollowTheirNeighbours()
+    {
+        var src = SyntheticVideo(60 * Fps, 5);
+        int d = Fingerprint.Dim;
+        // 20–28 s of the source is one frozen frame (an ED card): matches equally well at any offset.
+        for (int f = 20 * Fps; f < 28 * Fps; f++) Array.Copy(src, 20 * Fps * d, src, f * d, d);
+        var dst = new byte[48 * d].Select(_ => (byte)16).Concat(src).ToArray();
+        var doc = SubtitleDoc.Parse("[Events]\n" +
+            "Dialogue: 0,0:00:00.00,0:00:00.00,D,,0,0,0,,\n" + // platform placeholder
+            "Dialogue: 0,0:00:10.00,0:00:12.00,D,,0,0,0,,before\n" +
+            "Dialogue: 0,0:00:23.00,0:00:25.00,D,,0,0,0,,frozen\n" +
+            "Dialogue: 0,0:00:35.00,0:00:37.00,D,,0,0,0,,after\n", SubFormat.Ass);
+        var r = new Matcher(new Fingerprint(src, Fps), new Fingerprint(dst, Fps), new SyncOptions()).Match(doc.Events);
+        Assert.Equal(MatchStatus.Empty, r[0].Status);
+        Assert.False(r[0].NeedsCheck);
+        Assert.Equal(MatchStatus.Static, r[2].Status); // not trusted on its own…
+        Assert.Equal(48, r[2].ShiftFrames);            // …takes its neighbours' shift
+        Assert.All(r.Skip(1), x => Assert.Equal(48, x.ShiftFrames));
+    }
+
+    [Fact]
+    public async Task RefusesHalfDownloadedFiles()
+    {
+        var e = await Assert.ThrowsAsync<InvalidOperationException>(() => Sync.Run("ep01.mkv.!qB", "a.ass", "bd.mkv", "o.ass", new SyncOptions()));
+        Assert.Contains("没下载完", e.Message);
+        var fp = new Fingerprint(new byte[600 * Fingerprint.Dim], Fps); // 25 s decoded…
+        Assert.Throws<InvalidOperationException>(() => Sync.CheckComplete("x.mkv", new VideoInfo(Fps, 1440), fp)); // …of a 24 min file
     }
 }
