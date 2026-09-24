@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="using:SubMatcher.Gui"
         x:Class="SubMatcher.Gui.MainWindow"
-        Title="SubMatcher — 画面调轴" Width="1180" Height="800" MinWidth="820" MinHeight="560"
+        Title="SubMatcher — 画面调轴" Icon="/Assets/icon.ico" Width="1180" Height="800" MinWidth="820" MinHeight="560"
         DragDrop.AllowDrop="True">
   <TabControl x:Name="Tabs" Margin="8">
 
