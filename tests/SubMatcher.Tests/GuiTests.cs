@@ -141,6 +141,16 @@ public class GuiTests
         w.FindControl<TabControl>("Tabs")!.SelectedIndex = 2;
         Pump();
         Save(w, dir, "6-tools-dark.png");
+        if (Environment.GetEnvironmentVariable("SUBMATCHER_SUBSET_SAMPLE") is { Length: > 0 } sample)
+        {
+            // Opt-in live check against the real FontInAss server (network), never in normal test runs.
+            w.FindControl<TextBox>("SubsetInput")!.Text = sample;
+            Click(w, "子集化");
+            for (int i = 0; i < 100 && !w.FindControl<Button>("SubsetBtn")!.IsEnabled; i++) { Thread.Sleep(200); Pump(); }
+            w.FindControl<Border>("SubsetCard")!.BringIntoView();
+            Thread.Sleep(300); Pump();
+            Save(w, dir, "6b-subset.png");
+        }
         Click(w, "浅色模式");
 
         // Advanced options expanded: the left column overflows and grows a scrollbar.

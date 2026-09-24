@@ -8,6 +8,8 @@ public sealed class AppSettings
 {
     public bool TourDone { get; set; }
     public string Theme { get; set; } = "Default"; // Default | Light | Dark
+    public string FontServer { get; set; } = "https://font.anibt.net";
+    public string FontApiKey { get; set; } = "";
 
     internal static string FilePath = Path.Combine(AppContext.BaseDirectory, "settings.json");
 

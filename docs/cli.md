@@ -14,6 +14,7 @@ submatcher-cli --help
 | [`shift`](#shift) | 手动平移时间轴 |
 | [`fps`](#fps) | 帧率转换 |
 | [`encode`](#encode) | 字幕转 UTF-8 |
+| [`subset`](#subset) | 字体子集化 |
 | [`clear-cache`](#clear-cache) | 清空画面指纹缓存 |
 
 ## sync
@@ -114,6 +115,41 @@ submatcher-cli encode <字幕> [-o 输出]
 ```
 
 自动识别 UTF-8、UTF-16、GBK、BIG5，转成 UTF-8（带 BOM）。**不给 `-o` 会直接覆盖原文件。**
+
+## subset
+
+```sh
+submatcher-cli subset <字幕或文件夹>... [-r] [--out-dir 目录 | --in-place] [--server URL] [--api-key KEY] [--strict] [--clean] [--alias-salt 文本]
+```
+
+把字幕用到的字体精简成只含这些字的子集，嵌进字幕里，没装字体的播放器也能正常显示。字幕会上传到 [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss) 服务器处理，默认 `https://font.anibt.net`，协议和官方 `fontinass` 命令行一样，自建的服务器也能用。
+
+```sh
+# 默认输出 [BD] 01.sc.subset.ass，原文件不动
+submatcher-cli subset "[BD] 01.sc.ass"
+
+# 整个文件夹，包含子文件夹，直接覆盖原文件
+submatcher-cli subset ./subs -r --in-place
+
+# 简繁两条字幕要内封进同一个 MKV 时，用不同的别名盐，免得字体名撞车
+submatcher-cli subset "[BD] 01.sc.ass" --alias-salt SC
+submatcher-cli subset "[BD] 01.tc.ass" --alias-salt TC
+```
+
+| 选项 | 说明 |
+|---|---|
+| `-r` | 处理文件夹时包含子文件夹 |
+| `--out-dir <目录>` | 输出到这个目录 |
+| `--in-place` | 覆盖原文件 |
+| `--server <URL>` | FontInAss 服务器 |
+| `--api-key <KEY>` | 服务器要求鉴权时填，公共服务器不用 |
+| `--strict` | 有字体没找到就算失败，不写文件 |
+| `--clean` | 先去掉字幕里已经嵌入的字体。已经子集化过的字幕要重做时用 |
+| `--alias-salt <文本>` | 字体别名的盐，见上面的例子 |
+
+每个文件一行结果：`✓` 成功，`⚠` 成功但有字体没找到（会列出来），`✗` 失败（原因跟在后面）。自己生成的 `*.subset.*` 不会被再次处理。有失败时退出码是 1。
+
+公共服务器目前不支持 SRT，要先转成 ASS。
 
 ## clear-cache
 

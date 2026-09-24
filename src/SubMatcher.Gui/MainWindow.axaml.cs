@@ -62,6 +62,8 @@ public partial class MainWindow : Window
         AddHandler(DragDrop.DropEvent, OnDrop);
         Tabs.SelectionChanged += (_, _) => { if (Tabs.SelectedIndex == 2) UpdateCacheInfo(); };
 
+        SubsetServer.Text = _settings.FontServer;
+        SubsetApiKey.Text = _settings.FontApiKey;
         ApplyTheme(_settings.Theme);
         Tour.Closed += _ => { _settings.TourDone = true; _settings.Save(); HideEmptyResults(); };
         Opened += (_, _) =>
@@ -111,7 +113,7 @@ public partial class MainWindow : Window
             new(() => TabBatch, "批量",
                 "整季处理：选两个文件夹，按集数自动配对，外挂字幕和内封字幕都支持。", HideEmptyResults),
             new(() => TabTools, "工具",
-                "手动平移（可只平移某个区间）、帧率转换、任意编码转 UTF-8。"),
+                "手动平移（可只平移某个区间）、帧率转换、编码转 UTF-8，还有字体子集化：把用到的字精简成小字体嵌进字幕。"),
             new(() => TourBtn, "随时重看",
                 "以后想再看一遍，点这里就行。"),
         ]);
@@ -141,6 +143,9 @@ public partial class MainWindow : Window
                     break;
                 case 2 when Sync.IsSub(p):
                     ToolSub.Text = p;
+                    break;
+                case 2 when Directory.Exists(p):
+                    SubsetInput.Text = p;
                     break;
                 case 0 when Sync.IsSub(p):
                     SrcSub.Text = p;
@@ -467,6 +472,51 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) when (ex is FormatException or IOException or InvalidOperationException) { ToolStatus.Text = "失败：" + ex.Message; }
     }
+
+    async void ToolSubset(object? sender, RoutedEventArgs e)
+    {
+        var target = Blank(SubsetInput.Text) ?? Blank(ToolSub.Text);
+        var files = target == null ? [] : FontSubset.Collect([target], SubsetRecursive.IsChecked == true);
+        if (files.Count == 0) { ShowSubsetLog("没有找到 .ass / .ssa / .srt 字幕"); return; }
+
+        var o = new SubsetOptions
+        {
+            Server = Blank(SubsetServer.Text) ?? "https://font.anibt.net", ApiKey = Blank(SubsetApiKey.Text), AliasSalt = Blank(SubsetSalt.Text),
+            Clean = SubsetClean.IsChecked == true, Strict = SubsetStrict.IsChecked == true,
+        };
+        bool inPlace = SubsetInPlace.IsChecked == true;
+        _settings.FontServer = o.Server; _settings.FontApiKey = o.ApiKey ?? ""; _settings.Save();
+
+        SubsetBtn.IsEnabled = false;
+        SubsetProgress.IsVisible = true; SubsetProgress.Value = 0;
+        var log = new StringBuilder().AppendLine($"{files.Count} 个字幕 → {o.Server}");
+        ShowSubsetLog(log.ToString());
+        int done = 0, bad = 0;
+        try
+        {
+            // 3 at a time, results appended as they arrive (UI thread: awaits resume here)
+            using var gate = new SemaphoreSlim(3);
+            await Task.WhenAll(files.Select(async f =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    var r = await FontSubset.Run(f, FontSubset.OutputFor(f, null, inPlace), o);
+                    if (!r.Written) bad++;
+                    log.AppendLine($"{(r.Code == 200 ? "✓" : r.Written ? "⚠" : "✗")} {Path.GetFileName(f)}{(r.Written && !inPlace ? " → " + Path.GetFileName(r.Output) : "")}");
+                    foreach (var m in r.Messages) log.AppendLine("    " + m);
+                }
+                finally { gate.Release(); }
+                SubsetProgress.Value = ++done / (double)files.Count;
+                ShowSubsetLog(log.ToString().TrimEnd());
+            }));
+            Toast("子集化完成", $"成功 {files.Count - bad}，失败 {bad}", bad == 0 ? NotificationType.Success : NotificationType.Warning);
+        }
+        catch (IOException ex) { ShowSubsetLog(log + "失败：" + ex.Message); }
+        finally { SubsetBtn.IsEnabled = true; SubsetProgress.IsVisible = false; }
+    }
+
+    void ShowSubsetLog(string text) { SubsetLog.Text = text; SubsetLog.IsVisible = true; }
 
     void ToolEncode(object? sender, RoutedEventArgs e)
     {

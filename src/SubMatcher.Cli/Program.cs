@@ -69,6 +69,30 @@ try
             Console.WriteLine($"{enc.WebName} → UTF-8 BOM: {outPath}");
             return 0;
 
+        case "subset":
+        {
+            Need(pos, 1, "subset <字幕或目录>...");
+            var files = FontSubset.Collect(pos, Flag("r") || Flag("recursive"));
+            if (files.Count == 0) { Console.Error.WriteLine("没有找到 .ass / .ssa / .srt 字幕。"); return 1; }
+            var so = new SubsetOptions { Strict = Flag("strict"), Clean = Flag("clean"), AliasSalt = Get("alias-salt"), ApiKey = Get("api-key") };
+            if (Get("server") is { } server) so.Server = server;
+            Console.Error.WriteLine($"{files.Count} 个字幕 → {so.Server}");
+            int bad = 0;
+            // 3 at a time: fast enough for a season, gentle on a shared public server.
+            await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = 3, CancellationToken = cts.Token }, async (f, ct) =>
+            {
+                var r = await FontSubset.Run(f, FontSubset.OutputFor(f, Get("out-dir"), Flag("in-place")), so, ct);
+                lock (files)
+                {
+                    if (!r.Written) bad++;
+                    Console.WriteLine($"{(r.Code == 200 ? "✓" : r.Written ? "⚠" : "✗")} {Path.GetFileName(f)}{(r.Written ? " → " + r.Output : "")}");
+                    foreach (var m in r.Messages) Console.WriteLine($"    {m}");
+                }
+            });
+            Console.WriteLine($"完成：成功 {files.Count - bad}，失败 {bad}");
+            return bad == 0 ? 0 : 1;
+        }
+
         case "clear-cache":
             if (Directory.Exists(Fingerprint.CacheDir)) Directory.Delete(Fingerprint.CacheDir, true);
             Console.WriteLine("缓存已清空");
@@ -135,7 +159,7 @@ static void Need(List<string> pos, int n, string usage)
 
 static (List<string>, Dictionary<string, string>) ParseArgs(string[] a)
 {
-    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log"];
+    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "r", "recursive", "in-place", "strict", "clean"];
     var pos = new List<string>();
     var opt = new Dictionary<string, string>();
     for (int i = 0; i < a.Length; i++)
@@ -172,6 +196,9 @@ static void Usage() => Console.WriteLine("""
 
     submatcher-cli fps <字幕> --from 25 --to 23.976 [-o 输出]
     submatcher-cli encode <字幕> [-o 输出]      任意编码 → UTF-8 BOM
+    submatcher-cli subset <字幕或目录>... [-r] [--out-dir 目录 | --in-place]
+        [--server https://font.anibt.net] [--api-key KEY] [--strict] [--clean] [--alias-salt SC]
+        字体子集化：上传到 FontInAss 服务器，嵌入只含用到的字符的字体。默认输出 xx.subset.ass
     submatcher-cli clear-cache
     """);
 

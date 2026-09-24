@@ -292,6 +292,47 @@
                 </Border>
               </Grid>
 
+              <Border x:Name="SubsetCard" Classes="card">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="h" Text="字体子集化" />
+                  <TextBlock Classes="hint" Text="把字幕用到的字体精简成只含这些字的子集，嵌进字幕里，没装字体的播放器也能正常显示。字幕会上传到下面的 FontInAss 服务器处理。" />
+                  <StackPanel>
+                    <TextBlock Classes="field" Text="字幕或文件夹（留空 = 上面的字幕文件）" />
+                    <TextBox x:Name="SubsetInput" Watermark="拖入文件夹或浏览…">
+                      <TextBox.InnerRightContent>
+                        <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="SubsetInput" Click="BrowseFolder" Padding="8,0" />
+                      </TextBox.InnerRightContent>
+                    </TextBox>
+                  </StackPanel>
+                  <Grid ColumnDefinitions="2*,12,*,12,*">
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="服务器" />
+                      <TextBox x:Name="SubsetServer" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" ToolTip.Tip="公共服务器不需要">
+                      <TextBlock Classes="field" Text="API Key（可选）" />
+                      <TextBox x:Name="SubsetApiKey" PasswordChar="•" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="4" ToolTip.Tip="多条字幕内封进同一个 MKV 时，每条填不同的值（如 SC / TC），避免字体别名冲突">
+                      <TextBlock Classes="field" Text="别名盐（可选）" />
+                      <TextBox x:Name="SubsetSalt" Watermark="SC" />
+                    </StackPanel>
+                  </Grid>
+                  <Grid ColumnDefinitions="*,Auto">
+                    <WrapPanel VerticalAlignment="Center">
+                      <ToggleSwitch x:Name="SubsetRecursive" Content="包含子文件夹" Margin="0,0,16,4" />
+                      <ToggleSwitch x:Name="SubsetInPlace" Content="覆盖原文件" Margin="0,0,16,4" ToolTip.Tip="关掉时输出为 xx.subset.ass" />
+                      <ToggleSwitch x:Name="SubsetClean" Content="清除已嵌入的字体" Margin="0,0,16,4" ToolTip.Tip="已经子集化过的字幕要重新处理时打开" />
+                      <ToggleSwitch x:Name="SubsetStrict" Content="缺字体算失败" Margin="0,0,16,4" />
+                    </WrapPanel>
+                    <Button x:Name="SubsetBtn" Grid.Column="1" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="子集化"
+                            Click="ToolSubset" VerticalAlignment="Center" MinWidth="96" HorizontalContentAlignment="Center" />
+                  </Grid>
+                  <ProgressBar x:Name="SubsetProgress" Minimum="0" Maximum="1" IsVisible="False" />
+                  <SelectableTextBlock x:Name="SubsetLog" FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
+              </Border>
+
               <Border Classes="card">
                 <Grid ColumnDefinitions="*,Auto">
                   <StackPanel Spacing="4">
