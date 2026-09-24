@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -79,6 +81,61 @@ public class GuiTests
         Click(w, "保存修改");
         Assert.Contains("Dialogue: 0,0:00:08.04,0:00:09.04,D,,0,0,0,,b", File.ReadAllText(output));
         Assert.False(w.FindControl<Button>("SaveBtn")!.IsEnabled);
+    }
+
+    [AvaloniaFact]
+    public void AutoSubsetReembedsFontsAfterSavingEdits()
+    {
+        using var server = new FakeFontServer((_, body) => (200, "[]", body + "\n[Fonts]\nfontname: subset.ttf\n"));
+        var output = Path.Combine(TempDir(), "out.ass");
+        var w = NewWindow(tourDone: true);
+        w.FindControl<TextBox>("SubsetServer")!.Text = server.Url;
+        w.FindControl<ToggleSwitch>("AutoSubset")!.IsChecked = true;
+        Assert.True(AppSettings.Load().AutoSubset); // remembered
+
+        w.ShowResult(FakeResult(output), "none.mkv", "none.mkv");
+        var grid = w.FindControl<DataGrid>("Grid")!;
+        grid.SelectedItem = grid.ItemsSource!.Cast<Row>().Single(r => r.Text == "b");
+        Pump();
+        Click(w, "+1 帧");
+        Click(w, "保存修改");
+        for (int i = 0; i < 100 && !(File.Exists(output) && File.ReadAllText(output).Contains("[Fonts]")); i++) { Thread.Sleep(50); Pump(); }
+
+        var text = File.ReadAllText(output);
+        Assert.Contains("0:00:08.04", text); // the edit
+        Assert.Contains("[Fonts]", text);    // and fonts embedded again after the save rewrote the file
+        Assert.Single(server.Seen);
+    }
+
+    /// <summary>Expander, dropdown and tab switch must animate: partly transparent just after, fully opaque once settled.</summary>
+    [AvaloniaFact]
+    public void ListsAndPanelsAnimateIn()
+    {
+        var w = NewWindow(tourDone: true);
+        double Settled(Visual v) { Thread.Sleep(450); Pump(); return v.Opacity; }
+        // lowest opacity seen over the first ~80 ms, sampled every 10 ms
+        double JustStarted(Visual v) { double min = v.Opacity; for (int i = 0; i < 8; i++) { Thread.Sleep(10); Dispatcher.UIThread.RunJobs(); AvaloniaHeadlessPlatform.ForceRenderTimerTick(); min = Math.Min(min, v.Opacity); } return min; }
+
+        // "高级参数" unfolding
+        var expander = w.FindControl<Expander>("AdvancedPanel")!;
+        expander.IsExpanded = true;
+        var content = expander.GetVisualDescendants().OfType<ContentPresenter>().First(c => c.Name == "PART_ContentPresenter");
+        Assert.InRange(JustStarted(content), 0, 0.9);
+        Assert.Equal(1, Settled(content), 3);
+
+        // dropdown list on the tools page
+        w.FindControl<TabControl>("Tabs")!.SelectedIndex = 2;
+        var page = (Visual)((TabItem)w.FindControl<TabControl>("Tabs")!.SelectedItem!).Content!;
+        Assert.InRange(JustStarted(page), 0, 0.9); // tab switch fades in too
+        Assert.Equal(1, Settled(page), 3);
+
+        var combo = w.FindControl<ComboBox>("FpsFrom")!;
+        combo.IsDropDownOpen = true;
+        var popup = combo.GetVisualDescendants().OfType<Popup>().First(p => p.Name == "PART_Popup");
+        var border = popup.Child!.GetSelfAndVisualDescendants().OfType<Border>().First(b => b.Name == "PopupBorder");
+        Assert.InRange(JustStarted(border), 0, 0.9);
+        Assert.Equal(1, Settled(border), 3);
+        combo.IsDropDownOpen = false;
     }
 
     [AvaloniaFact]

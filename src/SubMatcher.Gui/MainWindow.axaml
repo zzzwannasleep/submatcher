@@ -103,6 +103,8 @@
                   </Grid>
                 </Expander>
 
+                <ToggleSwitch x:Name="AutoSubset" Content="调轴后自动子集化" IsCheckedChanged="AutoSubsetChanged"
+                              ToolTip.Tip="输出的字幕直接嵌入子集化字体（会上传到字体服务器）。服务器等设置在「工具 → 字体子集化」" />
                 <Button x:Name="RunBtn" Theme="{DynamicResource SolidButton}" Classes="Primary Large" Content="开始调轴"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="RunSync" />
                 <Grid ColumnDefinitions="*,8,*">

@@ -10,6 +10,7 @@ public sealed class AppSettings
     public string Theme { get; set; } = "Default"; // Default | Light | Dark
     public string FontServer { get; set; } = "https://font.anibt.net";
     public string FontApiKey { get; set; } = "";
+    public bool AutoSubset { get; set; }
 
     internal static string FilePath = Path.Combine(AppContext.BaseDirectory, "settings.json");
 

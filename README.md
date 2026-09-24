@@ -53,4 +53,4 @@ dotnet test
 
 ## 致谢
 
-[Sushi](https://github.com/tp7/Sushi) · [ACGRIP BBS](https://bbs.acgrip.com/thread-1936-1-1.html) · [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) · [FFmpeg](https://ffmpeg.org)
+[Sushi](https://github.com/tp7/Sushi) · [ACGRIP BBS](https://bbs.acgrip.com/thread-1936-1-1.html) · [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss) · [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) · [FFmpeg](https://ffmpeg.org)

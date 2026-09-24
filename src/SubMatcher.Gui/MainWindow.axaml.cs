@@ -60,10 +60,17 @@ public partial class MainWindow : Window
         AcceptPaths(paths);
         AddHandler(DragDrop.DragOverEvent, (_, e) => e.DragEffects = e.DataTransfer.Contains(DataFormat.File) ? DragDropEffects.Copy : DragDropEffects.None);
         AddHandler(DragDrop.DropEvent, OnDrop);
-        Tabs.SelectionChanged += (_, _) => { if (Tabs.SelectedIndex == 2) UpdateCacheInfo(); };
+        Tabs.SelectionChanged += (_, e) =>
+        {
+            if (e.Source != Tabs) return; // SelectionChanged also bubbles up from the results grid
+            if (Tabs.SelectedIndex == 2) UpdateCacheInfo();
+            // TabControl has no page transition in Avalonia 11.3: fade the new page in like an expander.
+            if ((Tabs.SelectedItem as TabItem)?.Content is Visual page) _ = new DropDownReveal { Duration = TimeSpan.FromMilliseconds(180) }.Start(null, page, true, default);
+        };
 
         SubsetServer.Text = _settings.FontServer;
         SubsetApiKey.Text = _settings.FontApiKey;
+        AutoSubset.IsChecked = _settings.AutoSubset;
         ApplyTheme(_settings.Theme);
         Tour.Closed += _ => { _settings.TourDone = true; _settings.Save(); HideEmptyResults(); };
         Opened += (_, _) =>
@@ -235,12 +242,22 @@ public partial class MainWindow : Window
             var progress = new Progress<SyncProgress>(p => { Progress.Value = p.Fraction; Status.Text = $"{p.Stage}… {p.Fraction * 100:0}%"; });
             // Read every control here on the UI thread; the lambda runs on the pool.
             var (sub, output, o, ct) = (Blank(SrcSub.Text), Blank(OutSub.Text), ReadOptions(), _cts.Token);
+            var so = AutoSubset.IsChecked == true ? ReadSubsetOptions() : null;
             _result = await Task.Run(() => Sync.Run(src, sub, dst, output, o, progress, ct));
             ShowResult(_result, src, dst);
             File.WriteAllText(Path.ChangeExtension(_result.OutputPath, ".check.log"), _result.CheckLog, new UTF8Encoding(true));
             OpenLogBtn.IsEnabled = true;
+            string summary = $"{_result.Events.Count} 行，需检查 {_result.NeedsCheckCount} 行";
+            var type = _result.NeedsCheckCount == 0 ? NotificationType.Success : NotificationType.Information;
+            if (so != null)
+            {
+                Status.Text = "字体子集化…";
+                var sr = await FontSubset.Run(_result.OutputPath, _result.OutputPath, so, ct);
+                summary += "，" + Describe(sr);
+                if (!sr.Written) type = NotificationType.Warning;
+            }
             Status.Text = $"完成，用时 {sw.Elapsed.TotalSeconds:0.0}s → {_result.OutputPath}";
-            Toast("调轴完成", $"{_result.Events.Count} 行，需检查 {_result.NeedsCheckCount} 行", _result.NeedsCheckCount == 0 ? NotificationType.Success : NotificationType.Information);
+            Toast("调轴完成", summary, type);
         }
         catch (OperationCanceledException) { Status.Text = "已取消"; }
         catch (Exception ex) { Status.Text = "失败：" + ex.Message; Toast("调轴失败", ex.Message, NotificationType.Error); }
@@ -341,7 +358,7 @@ public partial class MainWindow : Window
         _dirty = SaveBtn.IsEnabled = true;
     }
 
-    void SaveEdits(object? sender, RoutedEventArgs e)
+    async void SaveEdits(object? sender, RoutedEventArgs e)
     {
         if (_result == null) return;
         try
@@ -349,9 +366,39 @@ public partial class MainWindow : Window
             _result.Doc.Save(_result.OutputPath);
             _dirty = SaveBtn.IsEnabled = false;
             Status.Text = "已保存 → " + _result.OutputPath;
+            // Saving rewrites the subtitle from memory, which drops embedded fonts: embed them again.
+            if (AutoSubset.IsChecked == true)
+            {
+                Status.Text = "已保存，字体子集化…";
+                var sr = await FontSubset.Run(_result.OutputPath, _result.OutputPath, ReadSubsetOptions());
+                Status.Text = $"已保存，{Describe(sr)} → {_result.OutputPath}";
+            }
         }
         catch (IOException ex) { Status.Text = "保存失败：" + ex.Message; }
     }
+
+    void AutoSubsetChanged(object? sender, RoutedEventArgs e)
+    {
+        _settings.AutoSubset = AutoSubset.IsChecked == true;
+        _settings.Save();
+    }
+
+    /// <summary>Subset settings live on the tools page; auto-subset after syncing reuses them.</summary>
+    SubsetOptions ReadSubsetOptions()
+    {
+        var o = new SubsetOptions
+        {
+            Server = Blank(SubsetServer.Text) ?? "https://font.anibt.net", ApiKey = Blank(SubsetApiKey.Text), AliasSalt = Blank(SubsetSalt.Text),
+            Clean = SubsetClean.IsChecked == true, Strict = SubsetStrict.IsChecked == true,
+        };
+        _settings.FontServer = o.Server; _settings.FontApiKey = o.ApiKey ?? ""; _settings.Save();
+        return o;
+    }
+
+    static string Describe(SubsetResult r) =>
+        r.Code == 200 ? "已嵌入字体"
+        : r.Written ? "已嵌入字体，缺：" + string.Join("、", r.Messages)
+        : "子集化失败（字幕已保存，未嵌字体）：" + string.Join("；", r.Messages);
 
     async Task<bool> Confirm(string msg)
     {
@@ -396,6 +443,7 @@ public partial class MainWindow : Window
         if (Pairs() is not { } pairs) return;
         if (pairs.Count == 0) { BatchLog.Text = "没有能配对的视频\n"; return; }
         var o = ReadOptions();
+        var so = AutoSubset.IsChecked == true ? ReadSubsetOptions() : null;
         var outDir = Blank(BatchOut.Text);
         _cts = new CancellationTokenSource();
         SetBusy(true);
@@ -417,6 +465,7 @@ public partial class MainWindow : Window
                         var r = await Task.Run(() => Sync.Run(p.SrcVideo, sub, p.DstVideo, output, o, progress, _cts.Token));
                         File.WriteAllText(Path.ChangeExtension(r.OutputPath, ".check.log"), r.CheckLog, new UTF8Encoding(true));
                         Log($"   ✓ {r.Events.Count} 行，需检查 {r.NeedsCheckCount} 行 → {r.OutputPath}");
+                        if (so != null) Log("   " + Describe(await FontSubset.Run(r.OutputPath, r.OutputPath, so, _cts.Token)));
                         ok++;
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException) { Log("   ✗ " + ex.Message); fail++; }
@@ -479,13 +528,8 @@ public partial class MainWindow : Window
         var files = target == null ? [] : FontSubset.Collect([target], SubsetRecursive.IsChecked == true);
         if (files.Count == 0) { ShowSubsetLog("没有找到 .ass / .ssa / .srt 字幕"); return; }
 
-        var o = new SubsetOptions
-        {
-            Server = Blank(SubsetServer.Text) ?? "https://font.anibt.net", ApiKey = Blank(SubsetApiKey.Text), AliasSalt = Blank(SubsetSalt.Text),
-            Clean = SubsetClean.IsChecked == true, Strict = SubsetStrict.IsChecked == true,
-        };
+        var o = ReadSubsetOptions();
         bool inPlace = SubsetInPlace.IsChecked == true;
-        _settings.FontServer = o.Server; _settings.FontApiKey = o.ApiKey ?? ""; _settings.Save();
 
         SubsetBtn.IsEnabled = false;
         SubsetProgress.IsVisible = true; SubsetProgress.Value = 0;

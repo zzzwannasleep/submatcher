@@ -60,6 +60,7 @@ submatcher-cli sync "[TV] 01.mkv" "[BD] 01.mkv" --sub "[TV] 01.sc.ass" -o out/01
 | `--hwaccel` | | 硬件解码，1080p 以上的片源会快不少 |
 | `--no-cache` | | 不读写画面指纹缓存 |
 | `--no-log` | | 不生成 `.check.log` |
+| `--subset` | | 调完直接[字体子集化](#subset)，输出的字幕嵌好字体。可以一起给 `subset` 的 `--server` `--api-key` `--alias-salt` `--clean` `--strict`；子集化失败时保留未嵌字体的字幕，退出码为 1 |
 
 ## batch
 

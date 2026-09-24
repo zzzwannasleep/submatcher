@@ -31,7 +31,7 @@ try
                 {
                     string? output = null;
                     if (Get("out-dir") is { } dir) output = Path.Combine(dir, Path.GetFileName(Sync.DefaultOutput(p.SrcVideo, sub, p.DstVideo)));
-                    try { await RunSync(p.SrcVideo, sub, p.DstVideo, output); }
+                    try { if (await RunSync(p.SrcVideo, sub, p.DstVideo, output) != 0) failed++; }
                     catch (Exception e) when (e is not OperationCanceledException) { failed++; Console.Error.WriteLine($"失败：{e.Message}"); }
                 }
             }
@@ -74,8 +74,7 @@ try
             Need(pos, 1, "subset <字幕或目录>...");
             var files = FontSubset.Collect(pos, Flag("r") || Flag("recursive"));
             if (files.Count == 0) { Console.Error.WriteLine("没有找到 .ass / .ssa / .srt 字幕。"); return 1; }
-            var so = new SubsetOptions { Strict = Flag("strict"), Clean = Flag("clean"), AliasSalt = Get("alias-salt"), ApiKey = Get("api-key") };
-            if (Get("server") is { } server) so.Server = server;
+            var so = SubsetOpts();
             Console.Error.WriteLine($"{files.Count} 个字幕 → {so.Server}");
             int bad = 0;
             // 3 at a time: fast enough for a season, gentle on a shared public server.
@@ -137,7 +136,21 @@ async Task<int> RunSync(string src, string? sub, string dst, string? output)
         File.WriteAllText(log, r.CheckLog, new UTF8Encoding(true));
         Console.WriteLine($"检查日志: {log}");
     }
+    if (Flag("subset"))
+    {
+        var sr = await FontSubset.Run(r.OutputPath, r.OutputPath, SubsetOpts(), cts.Token);
+        Console.WriteLine(sr.Code == 200 ? "字体子集化: 已嵌入" : sr.Written ? "字体子集化: 已嵌入，但有字体没找到" : "字体子集化失败，已保留未嵌字体的字幕");
+        foreach (var m in sr.Messages) Console.WriteLine($"    {m}");
+        if (!sr.Written) return 1;
+    }
     return 0;
+}
+
+SubsetOptions SubsetOpts()
+{
+    var so = new SubsetOptions { Strict = Flag("strict"), Clean = Flag("clean"), AliasSalt = Get("alias-salt"), ApiKey = Get("api-key") };
+    if (Get("server") is { } server) so.Server = server;
+    return so;
 }
 
 void Save(SubtitleDoc doc, string input, string tag)
@@ -159,7 +172,7 @@ static void Need(List<string> pos, int n, string usage)
 
 static (List<string>, Dictionary<string, string>) ParseArgs(string[] a)
 {
-    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "r", "recursive", "in-place", "strict", "clean"];
+    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean"];
     var pos = new List<string>();
     var opt = new Dictionary<string, string>();
     for (int i = 0; i < a.Length; i++)
@@ -187,6 +200,7 @@ static void Usage() => Console.WriteLine("""
         --hwaccel        使用硬件解码
         --no-cache       不使用画面指纹缓存
         --no-log         不写 .check.log
+        --subset         调完直接字体子集化（可加 subset 命令的 --server 等选项）
 
     submatcher-cli batch <源目录> <目标目录> [--out-dir 目录] [同 sync 的选项]
         按集数（找不到则按文件名顺序）配对，源目录里与视频同名前缀的字幕都会处理
