@@ -69,6 +69,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Native AOT prerequisites (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq clang zlib1g-dev
+
       - name: Publish
         run: |
           echo "NAME=SubMatcher-$TAG-$RID" >> "$GITHUB_ENV"
@@ -90,19 +94,28 @@ jobs:
 
       - name: Fetch latest stable ffmpeg
         run: |
-          DIR="publish/$RID"
-          mkdir -p ff
+          # Everything goes under ffmpeg/bin (+ ffmpeg/lib on Linux); the app looks there.
+          FF="publish/$RID/ffmpeg"
+          mkdir -p ff "$FF/bin"
           case "$RID" in
             win-x64|linux-x64)
-              # BtbN static GPL builds; pick the highest stable release branch (ffmpeg-nX.Y-latest-…).
+              # BtbN LGPL *shared* builds: ffmpeg + ffprobe share one copy of the libs, less than half the static size.
+              # Pick the highest stable branch (ffmpeg-nX.Y-latest-…).
               plat=$([[ "$RID" == win-x64 ]] && echo win64 || echo linux64)
               asset=$(gh release view latest -R BtbN/FFmpeg-Builds --json assets -q '.assets[].name' \
-                | grep -E "^ffmpeg-n[0-9.]+-latest-$plat-gpl-[0-9.]+\.(zip|tar\.xz)$" | sort -V | tail -1)
+                | grep -E "^ffmpeg-n[0-9.]+-latest-$plat-lgpl-shared-[0-9.]+\.(zip|tar\.xz)$" | sort -V | tail -1)
               echo "using $asset"
               gh release download latest -R BtbN/FFmpeg-Builds -p "$asset" -D ff
               if [[ "$asset" == *.zip ]]; then 7z x "ff/$asset" -o./ff >/dev/null; else tar -xJf "ff/$asset" -C ff; fi
-              cp ff/ffmpeg-*/bin/ffmpeg* ff/ffmpeg-*/bin/ffprobe* "$DIR/"
-              cp ff/ffmpeg-*/LICENSE.txt "$DIR/FFMPEG-LICENSE.txt"
+              src_dir=$(ls -d ff/ffmpeg-*/)
+              if [[ "$RID" == win-x64 ]]; then
+                cp "$src_dir"bin/ffmpeg.exe "$src_dir"bin/ffprobe.exe "$src_dir"bin/*.dll "$FF/bin/"
+              else
+                # binaries find their libs via RUNPATH $ORIGIN/../lib, so keep that layout (and the .so symlinks)
+                cp "$src_dir"bin/ffmpeg "$src_dir"bin/ffprobe "$FF/bin/"
+                mkdir -p "$FF/lib" && cp -P "$src_dir"lib/*.so* "$FF/lib/"
+              fi
+              cp "$src_dir"LICENSE.txt "$FF/LICENSE.txt"
               src="https://github.com/BtbN/FFmpeg-Builds ($asset)"
               ;;
             osx-*)
@@ -110,18 +123,18 @@ jobs:
               arch=$([[ "$RID" == osx-arm64 ]] && echo arm64 || echo amd64)
               for b in ffmpeg ffprobe; do
                 url=$(curl -fsSL -o "ff/$b.zip" -w "%{url_effective}" "https://ffmpeg.martin-riedl.de/redirect/latest/macos/$arch/release/$b.zip")
-                unzip -o -q "ff/$b.zip" -d "$DIR"
+                unzip -o -q "ff/$b.zip" -d "$FF/bin"
               done
-              chmod +x "$DIR/ffmpeg" "$DIR/ffprobe"
-              codesign --force -s - "$DIR/ffmpeg" "$DIR/ffprobe"
+              chmod +x "$FF/bin/ffmpeg" "$FF/bin/ffprobe"
+              codesign --force -s - "$FF/bin/ffmpeg" "$FF/bin/ffprobe"
               src="https://ffmpeg.martin-riedl.de ($arch, latest release)"
               ;;
           esac
           # osx-x64 is cross-built on arm64 and can't run its ffmpeg; take the version from the download URL (…_9.0.2/ffmpeg.zip).
-          if [[ "$RID" == osx-x64 ]]; then ver="ffmpeg ${url##*_}"; ver="${ver%%/*}"; else ver=$("$DIR"/ffmpeg* -version | head -1); fi
-          printf 'Bundled FFmpeg: %s\nSource: %s\nFFmpeg is licensed under the GPL; its source code is available at https://ffmpeg.org/download.html\n' \
-            "$ver" "$src" > "$DIR/FFMPEG-NOTICE.txt"
-          cat "$DIR/FFMPEG-NOTICE.txt"
+          if [[ "$RID" == osx-x64 ]]; then ver="ffmpeg ${url##*_}"; ver="${ver%%/*}"; else ver=$("$FF"/bin/ffmpeg* -version | head -1); fi
+          printf 'Bundled FFmpeg: %s\nSource: %s\nSource code: https://ffmpeg.org/download.html\n' "$ver" "$src" > "$FF/NOTICE.txt"
+          cat "$FF/NOTICE.txt"
+          du -sh "$FF"
 
       - name: Zip (with ffmpeg)
         run: |

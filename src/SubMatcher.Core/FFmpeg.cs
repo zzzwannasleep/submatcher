@@ -12,7 +12,8 @@ public static class FFmpeg
     public static string Exe(string name)
     {
         var file = OperatingSystem.IsWindows() ? name + ".exe" : name;
-        foreach (var dir in new[] { Environment.GetEnvironmentVariable("SUBMATCHER_FFMPEG"), AppContext.BaseDirectory, Path.Combine(AppContext.BaseDirectory, "ffmpeg") })
+        foreach (var dir in new[] { Environment.GetEnvironmentVariable("SUBMATCHER_FFMPEG"), AppContext.BaseDirectory,
+                     Path.Combine(AppContext.BaseDirectory, "ffmpeg"), Path.Combine(AppContext.BaseDirectory, "ffmpeg", "bin") })
             if (!string.IsNullOrEmpty(dir) && File.Exists(Path.Combine(dir, file))) return Path.Combine(dir, file);
         return name; // let the OS search PATH
     }

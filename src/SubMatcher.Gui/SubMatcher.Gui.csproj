@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>SubMatcher</AssemblyName>
-    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <PublishAot>true</PublishAot>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/icon.ico</ApplicationIcon>
   </PropertyGroup>

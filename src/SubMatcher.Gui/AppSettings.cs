@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace SubMatcher.Gui;
 
@@ -12,13 +13,17 @@ public sealed class AppSettings
 
     public static AppSettings Load()
     {
-        try { return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new(); }
+        try { return JsonSerializer.Deserialize(File.ReadAllText(FilePath), SettingsJson.Default.AppSettings) ?? new(); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException) { return new(); }
     }
 
     public void Save()
     {
-        try { File.WriteAllText(FilePath, JsonSerializer.Serialize(this)); }
+        try { File.WriteAllText(FilePath, JsonSerializer.Serialize(this, SettingsJson.Default.AppSettings)); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 }
+
+// Source-generated (de)serializer: no reflection, so it survives Native AOT trimming.
+[JsonSerializable(typeof(AppSettings))]
+internal sealed partial class SettingsJson : JsonSerializerContext;

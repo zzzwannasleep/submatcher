@@ -134,11 +134,11 @@
                     <DataGrid x:Name="Grid" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="True"
                               GridLinesVisibility="Horizontal" SelectionChanged="RowSelected">
                       <DataGrid.Columns>
-                        <DataGridTextColumn Header="原开始" Binding="{Binding OldStart}" Width="Auto" />
-                        <DataGridTextColumn Header="新开始" Binding="{Binding NewStart}" Width="Auto" />
-                        <DataGridTextColumn Header="偏移" Binding="{Binding Shift}" Width="Auto" />
-                        <DataGridTextColumn Header="状态" Binding="{Binding StatusText}" Width="Auto" />
-                        <DataGridTextColumn Header="文本" Binding="{Binding Text}" Width="*" MinWidth="120" />
+                        <DataGridTextColumn x:DataType="local:Row" Header="原开始" Binding="{CompiledBinding OldStart}" Width="Auto" />
+                        <DataGridTextColumn x:DataType="local:Row" Header="新开始" Binding="{CompiledBinding NewStart}" Width="Auto" />
+                        <DataGridTextColumn x:DataType="local:Row" Header="偏移" Binding="{CompiledBinding Shift}" Width="Auto" />
+                        <DataGridTextColumn x:DataType="local:Row" Header="状态" Binding="{CompiledBinding StatusText}" Width="Auto" />
+                        <DataGridTextColumn x:DataType="local:Row" Header="文本" Binding="{CompiledBinding Text}" Width="*" MinWidth="120" />
                       </DataGrid.Columns>
                     </DataGrid>
                   </Border>
