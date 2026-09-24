@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SubMatcher.Cli/SubMatcher.Cli.csproj" />
+    <Project Path="src/SubMatcher.Core/SubMatcher.Core.csproj" />
+    <Project Path="src/SubMatcher.Gui/SubMatcher.Gui.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SubMatcher.Tests/SubMatcher.Tests.csproj" />
+  </Folder>
+</Solution>
