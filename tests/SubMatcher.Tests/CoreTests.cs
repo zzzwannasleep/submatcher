@@ -62,6 +62,8 @@ public class CoreTests
         Assert.Equal("1", Sync.EpisodeOf("[VCB-Studio] Show [01][Ma10p_1080p][x265_flac].mkv"));
         Assert.Equal("12", Sync.EpisodeOf("Show - 12 (BD 1920x1080 x264).mkv"));
         Assert.Equal("3", Sync.EpisodeOf("某番 第03话.mp4"));
+        Assert.Equal("7", Sync.EpisodeOf("Show EP07.mkv"));
+        Assert.Equal("5", Sync.EpisodeOf("[Grp] Show - 05 [1080p].mkv"));
         Assert.Equal(Path.Combine(Path.GetFullPath("bd"), "Show BD 01.sc.ass"),
             Sync.DefaultOutput("tv/Show TV 01.mkv", "tv/Show TV 01.sc.ass", "bd/Show BD 01.mkv"));
     }

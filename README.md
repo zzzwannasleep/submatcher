@@ -42,7 +42,7 @@ submatcher-cli sync "[TV] 01.mkv" "[BD] 01.mkv" --sub "[TV] 01.ass"
 submatcher-cli batch ./tv ./bd
 ```
 
-全部参数见 `submatcher-cli --help`。
+全部命令和参数见 [命令行文档](docs/cli.md)。
 
 ## 构建
 
