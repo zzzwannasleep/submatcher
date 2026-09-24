@@ -1,67 +1,56 @@
-# SubMatcher — 用画面给字幕调轴
+<p align="center">
+  <img src="src/SubMatcher.Gui/Assets/icon.png" width="96" alt="SubMatcher">
+</p>
 
-视频版的 [Sushi](https://github.com/tp7/Sushi)。Sushi 比对**音频**，SubMatcher 比对**画面**：拿字幕每一行出现时的那段画面，去新片源里找同样的画面，把时间轴搬过去。
-适合 TV / Web 字幕转 BD、不同压制版本之间互转，以及音轨不一样（重新混音、配音版、没有音轨）导致 Sushi 失效的场合。
+<h1 align="center">SubMatcher</h1>
 
-- 桌面端（Avalonia，Windows / macOS / Linux）+ 命令行，逻辑全部在 C# 的 `SubMatcher.Core`
-- 便携版：解压即用，不写注册表、不往用户目录/临时目录写任何东西
-- 依赖 ffmpeg / ffprobe：Release 里每个平台都有自带 ffmpeg 的 `-ffmpeg.zip`；不带的版本需要把它们放进程序目录、`SUBMATCHER_FFMPEG` 指定的目录或 PATH
+<p align="center">用画面给字幕调轴，视频版的 <a href="https://github.com/tp7/Sushi">Sushi</a>。</p>
 
-## 原理
+<p align="center">
+  <a href="https://github.com/zzzwannasleep/submatcher/releases/latest"><img src="https://img.shields.io/github/v/release/zzzwannasleep/submatcher?style=flat-square" alt="release"></a>
+  <a href="https://github.com/zzzwannasleep/submatcher/releases"><img src="https://img.shields.io/github/downloads/zzzwannasleep/submatcher/total?style=flat-square" alt="downloads"></a>
+  <a href="https://github.com/zzzwannasleep/submatcher/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/zzzwannasleep/submatcher/release.yml?style=flat-square" alt="build"></a>
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square" alt="platform">
+  <img src="https://img.shields.io/badge/.NET-10-512BD4?style=flat-square" alt=".NET 10">
+</p>
 
-1. ffmpeg 把两个视频按同一帧率（默认跟随目标视频）解成 32×18 的灰度小图，四周各裁掉 5%（去掉台标、黑边、过扫描）。
-2. 每帧转成**像素排名**再归一化，帧与帧的相似度就是秩相关（Spearman）。亮度、对比度、gamma、TV/PC 色域的差异直接抵消；烧进画面的台标只会让几个像素的排名离群，不会主导结果。
-3. 逐行搜索：取这一行的画面（太短会扩展到 1.5 秒），在「上一个可靠偏移 ±10 秒」里滑动，代价 = 平均(1 − 相关)。局部找不到时，对整部目标视频做一次粗搜加精搜，用来处理大段挪位（OP/ED 换位、插入或删掉的片段）。
-4. 像 Sushi 一样善后：
-   - 找不到的行（画面在新片源里被删了）沿用前后邻居里更贴合的那个偏移
-   - 静止画面（多个偏移同样好）沿用邻居的偏移
-   - 夹在两个一致邻居之间的孤立离群值会被投票纠正
-   - 偏移相差 ≤1 帧的连续行合为一段重新整体搜索，消除抖动
-5. 可选的镜头吸附：原本卡在切镜头处的时间点，调整后也卡在目标视频对应的切镜头处。
-6. 输出 UTF-8 BOM 字幕，另外写一份 `.check.log`，列出偏移变化点和所有没把握的行。
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
+    <img src="docs/screenshot-light.png" width="860" alt="screenshot">
+  </picture>
+</p>
 
-## 桌面端
+TV / Web 的字幕搬到 BD 上，时间轴对不上。Sushi 靠音频对齐，SubMatcher 靠画面：把每行字幕出现时的画面拿到新片源里找，找到哪就挪到哪。台标、分辨率、调色不同都不影响，音轨重混或者干脆没有音轨也照样能用。
 
-界面基于 [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) + [Ursa](https://github.com/irihitech/Ursa.Avalonia)，支持浅色/深色（右上角切换，会记住）。首次打开会有一段仿 [driver.js](https://driverjs.com) 的使用引导（遮罩高亮 + 分步说明，支持跳过、键盘 ← → / Esc），之后随时点右上角「使用引导」重看。界面偏好保存在程序目录的 `settings.json`。
+## 下载
 
-| 页面 | 功能 |
-|---|---|
-| 画面调轴 | 拖入视频和字幕（第一个视频算源，第二个算目标；源视频旁边同名的字幕会自动带上）。字幕可以留空，这时用源视频的内封字幕。结果表列出每行的偏移、代价和状态，可以只看需要检查的行。选中一行会显示源/目标两边的画面对照，可以对选中的行 ±1 帧、±0.5 秒，或者套用上一行的偏移，改完保存。 |
-| 批量 | 两个目录按集数配对（认不出集数时按文件名顺序）。源目录里和视频同名前缀的字幕（如 `xx.sc.ass`、`xx.tc.ass`）会全部处理，没有外挂字幕的用内封字幕。 |
-| 工具 | 整体或区间平移（直接填偏移，或者填「原时间 → 目标时间」自动算）；帧率转换（如 25 → 23.976）；任意编码转 UTF-8；清空画面指纹缓存。 |
+去 [Releases](https://github.com/zzzwannasleep/submatcher/releases/latest) 下对应平台的 zip，解压就能用。带 `-ffmpeg` 的自带 ffmpeg，一般下这个。
 
-把文件或文件夹拖到 `SubMatcher.exe` 图标上启动，效果等同于拖进窗口。
+macOS 第一次打开被拦的话，对解压出来的文件夹执行 `xattr -cr`。
 
-## 命令行
+## 用法
 
+把源视频、源字幕、目标视频拖进窗口，点「开始调轴」。字幕输出到目标视频旁边，没把握的行会标出来，可以对着画面逐行微调。重新作画或者裁切过的镜头找不到对应画面，也会标出来。
+
+整季批量处理、手动平移、转帧率、转编码在另外两个标签页里。
+
+命令行：
+
+```sh
+submatcher-cli sync "[TV] 01.mkv" "[BD] 01.mkv" --sub "[TV] 01.ass"
+submatcher-cli batch ./tv ./bd
 ```
-submatcher-cli sync   <源视频> <目标视频> [--sub 源字幕] [-o 输出] [--window 10] [--fps 0] [--max-cost 0.4]
-                      [--warn-cost 0.2] [--min-line 1.5] [--stream 0] [--no-snap] [--hwaccel] [--no-cache] [--no-log]
-submatcher-cli batch  <源目录> <目标目录> [--out-dir 目录] [同上选项]
-submatcher-cli shift  <字幕> --offset -1.5 | --from 0:10:35 --to 0:12:03 [--range-start t] [--range-end t] [-o 输出]
-submatcher-cli fps    <字幕> --from 25 --to 23.976 [-o 输出]
-submatcher-cli encode <字幕> [-o 输出]
-submatcher-cli clear-cache
-```
+
+全部参数见 `submatcher-cli --help`。
 
 ## 构建
 
-需要 .NET 10 SDK。
-
-```
+```sh
 dotnet test
-dotnet run --project src/SubMatcher.Gui
-./publish.sh win-x64        # 也可以是 linux-x64 / osx-arm64 …，输出到 publish/<rid>/
+./publish.sh win-x64    # 或 linux-x64 / osx-arm64 / osx-x64
 ```
 
-画面指纹缓存在程序目录的 `cache/` 里（程序目录不可写时不缓存），同一个视频第二次调轴基本不用再等解码；删掉这个文件夹或在「工具」页清空即可。
+## 致谢
 
-## 发布
-
-在 GitHub 的 Actions → Release → Run workflow 点一下即可：版本号自动递增（首个 v0.1.0，之后每次 +0.0.1），先跑测试，再为 win-x64 / linux-x64 / osx-arm64 / osx-x64 各打两个便携 zip（带和不带最新稳定版 ffmpeg），发布到 Releases 并自动打 tag。勾选「只构建，不发布」可以试跑。需要跳大版本时手动推 tag（如 `git tag v0.2.0 && git push origin v0.2.0`），之后会从它继续递增。
-
-## 限制
-
-- 画面必须真的一样：重新作画或修正过的镜头（BD 修正）、画幅不同的版本（4:3 和 16:9 裁切）匹配不上，这类行会进检查日志，沿用邻近偏移。
-- 纯黑、纯白和长时间静止的画面本身不带时间信息，只能沿用邻近偏移。
-- 速度主要取决于 ffmpeg 解码。1080p 片源可以勾选「硬件解码」；匹配本身在 24 分钟、400 行的规模下不到 1 秒。
+[Sushi](https://github.com/tp7/Sushi) · [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) · [FFmpeg](https://ffmpeg.org)

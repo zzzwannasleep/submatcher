@@ -145,4 +145,56 @@ public class GuiTests
     }
 
     static void Save(Window w, string dir, string name) => w.CaptureRenderedFrame()?.Save(Path.Combine(dir, name));
+
+    /// <summary>The README screenshot: a realistic episode's worth of rows, one selected, real frames in the preview.</summary>
+    [AvaloniaFact]
+    public void ReadmeScreenshot()
+    {
+        var dir = Environment.GetEnvironmentVariable("SUBMATCHER_SHOTS");
+        if (string.IsNullOrEmpty(dir)) return;
+        string[] lines =
+        [
+            "早上好，今天也要加油哦", "你又迟到了", "抱歉抱歉，路上电车停了", "借口倒是很多嘛", "这次是真的！", "好啦好啦，快进来吧",
+            "社团活动今天几点开始？", "四点，别忘了带乐谱", "我昨天练到很晚", "那首曲子果然还是好难", "副歌那段总是跟不上", "要不要放慢一点试试",
+            "（广播）请各位同学注意", "……刚才那是什么声音", "天台那边好像有人", "我们去看看吧", "等一下，老师说不能上去", "就看一眼",
+            "门没锁", "风好大", "你看，从这里能看到整个小镇", "原来你一直一个人来这里啊", "嗯，这是我的秘密基地", "现在也是你的了",
+        ];
+        var sb = new System.Text.StringBuilder("[Events]\n");
+        for (int i = 0; i < lines.Length; i++)
+            sb.Append($"Dialogue: 0,{SubtitleDoc.FormatAssTime(2000 + i * 4200)},{SubtitleDoc.FormatAssTime(4800 + i * 4200)},D,,0,0,0,,{lines[i]}\n");
+        var doc = SubtitleDoc.Parse(sb.ToString(), SubFormat.Ass);
+        var events = doc.Events.Select((e, i) =>
+        {
+            int frames = i < 13 ? 72 : -48;
+            var status = i == 12 ? MatchStatus.Inherited : i == 15 ? MatchStatus.Static : MatchStatus.Ok;
+            long shift = (long)Math.Round(frames * 1001 / 24.0);
+            return new EventResult
+            {
+                Index = i, OldStart = e.Start, OldEnd = e.End, NewStart = e.Start + shift, NewEnd = e.End + shift, ShiftFrames = frames, Text = e.Text,
+                Cost = status == MatchStatus.Inherited ? 0.93 : 0.02 + i % 5 * 0.01, Status = status,
+            };
+        }).ToList();
+        var result = new SyncResult { Events = events, Doc = doc, OutputPath = Path.Combine(TempDir(), "o.ass"), Fps = 24000 / 1001.0, CheckLog = "" };
+
+        foreach (var theme in new[] { "light", "dark" })
+        {
+            var w = NewWindow(tourDone: true);
+            if (theme == "dark") Click(w, "深色模式");
+            w.FindControl<TextBox>("SrcVideo")!.Text = @"D:\Anime\[TV] 秘密基地 - 01 [1080p].mkv";
+            w.FindControl<TextBox>("SrcSub")!.Text = @"D:\Anime\[TV] 秘密基地 - 01 [1080p].sc.ass";
+            w.FindControl<TextBox>("DstVideo")!.Text = @"D:\Anime\[BD] 秘密基地 [01][Ma10p_1080p].mkv";
+            w.ShowResult(result, "none.mkv", "none.mkv");
+            var grid = w.FindControl<DataGrid>("Grid")!;
+            grid.SelectedItem = grid.ItemsSource!.Cast<Row>().ElementAt(10);
+            Pump();
+            if (Environment.GetEnvironmentVariable("SUBMATCHER_SHOT_FRAMES") is { Length: > 0 } frames)
+            {
+                w.SrcImage.Source = new Avalonia.Media.Imaging.Bitmap(Path.Combine(frames, "src.png"));
+                w.DstImage.Source = new Avalonia.Media.Imaging.Bitmap(Path.Combine(frames, "dst.png"));
+            }
+            Thread.Sleep(600); Pump(); Thread.Sleep(300); Pump();
+            Save(w, dir, $"readme-{theme}.png");
+            if (theme == "dark") Click(w, "浅色模式");
+        }
+    }
 }

@@ -26,7 +26,7 @@
 
         <!-- ============ 画面调轴 ============ -->
         <TabItem x:Name="TabSync" Header="画面调轴">
-          <Grid ColumnDefinitions="340,20,*" Margin="0,12,0,0">
+          <Grid ColumnDefinitions="320,20,*" Margin="0,12,0,0">
             <ScrollViewer>
               <StackPanel Spacing="12">
                 <Border x:Name="FilesCard" Classes="card">
@@ -129,7 +129,7 @@
                   <u:Banner x:Name="Summary" Type="Information" Header="调轴完成后，这里显示汇总" Content="共多少行、多少行需要检查、主要偏移是多少" />
                   <ToggleSwitch x:Name="OnlyCheck" Grid.Column="1" Content="只看需检查" Margin="16,0,0,0" IsCheckedChanged="FilterChanged" />
                 </Grid>
-                <Grid Grid.Row="2" ColumnDefinitions="*,16,280">
+                <Grid Grid.Row="2" ColumnDefinitions="*,16,260">
                   <Border x:Name="ResultsCard" Classes="card" Padding="0">
                     <DataGrid x:Name="Grid" IsReadOnly="True" SelectionMode="Extended" CanUserSortColumns="True"
                               GridLinesVisibility="Horizontal" SelectionChanged="RowSelected">
@@ -147,7 +147,7 @@
                     <ScrollViewer>
                       <StackPanel Spacing="8">
                         <TextBlock Classes="h" Text="对照与微调" />
-                        <TextBlock Classes="hint" Text="选中一行（可多选），对不上就微调后保存" />
+                        <TextBlock Classes="hint" Text="选中行（可多选）微调后保存" />
                         <UniformGrid Columns="2" Margin="0,4,0,0">
                           <Button Content="−1 帧" Tag="-1" Click="Nudge" Margin="0,0,4,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
                           <Button Content="+1 帧" Tag="1" Click="Nudge" Margin="4,0,0,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
@@ -177,7 +177,7 @@
 
         <!-- ============ 批量 ============ -->
         <TabItem x:Name="TabBatch" Header="批量">
-          <Grid ColumnDefinitions="340,20,*" Margin="0,12,0,0">
+          <Grid ColumnDefinitions="320,20,*" Margin="0,12,0,0">
             <StackPanel Spacing="12">
               <Border Classes="card">
                 <StackPanel Spacing="12">

@@ -1,17 +1,10 @@
 name: Release
 
-# Actions → Release → Run workflow: next version is picked automatically (v0.1.0 first, then +0.0.1 each time),
-# tested, built as portable zips for every platform and published as a GitHub Release (the tag is created too).
-# Tick "dry_run" to build without publishing. Pushing a tag by hand (e.g. v0.2.0) releases exactly that version.
+# Run workflow = release. Version: v0.1.0 first, then +0.0.1. Push a tag (e.g. v0.2.0) to jump.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: "只构建，不发布"
-        type: boolean
-        default: false
 
 # One release at a time, so two runs can't claim the same version number.
 concurrency:
@@ -144,7 +137,6 @@ jobs:
 
   release:
     needs: [version, build]
-    if: startsWith(github.ref, 'refs/tags/v') || !inputs.dry_run
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -161,15 +153,8 @@ jobs:
           # --target makes gh create the tag on this commit when it doesn't exist yet.
           gh release create "$TAG" dist/*.zip -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "SubMatcher $TAG" --generate-notes --notes "$(cat <<'EOF'
-          便携版，解压即用，不安装、不往系统里写任何东西（画面指纹缓存和界面设置都在程序目录里）。
+          解压即用。带 `-ffmpeg` 的自带 ffmpeg，一般下这个。
 
-          | 文件 | 说明 |
-          |---|---|
-          | `SubMatcher-…-<平台>-ffmpeg.zip` | 自带最新稳定版 ffmpeg / ffprobe，推荐 |
-          | `SubMatcher-…-<平台>.zip` | 不带 ffmpeg，需要自己把 ffmpeg / ffprobe 放进程序目录或 PATH |
-
-          平台：`win-x64` · `linux-x64` · `osx-arm64`（Apple Silicon）· `osx-x64`（Intel Mac）
-
-          macOS 首次运行如被拦截：`xattr -cr SubMatcher-*/`
+          `win-x64` · `linux-x64` · `osx-arm64`（M 系列 Mac）· `osx-x64`（Intel Mac）。macOS 第一次打开被拦的话，对解压出来的文件夹执行 `xattr -cr`。
           EOF
           )"

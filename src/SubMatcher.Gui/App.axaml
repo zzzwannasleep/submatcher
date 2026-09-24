@@ -28,6 +28,11 @@
       <Setter Property="Theme" Value="{DynamicResource CardBorder}" />
       <Setter Property="Padding" Value="16" />
     </Style>
+    <!-- one line per row in result tables; the full text is one click away -->
+    <Style Selector="DataGridCell TextBlock">
+      <Setter Property="TextWrapping" Value="NoWrap" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
     <!-- content that fades/slides in when it gets data -->
     <Style Selector=":is(Control).reveal">
       <Setter Property="Transitions">
