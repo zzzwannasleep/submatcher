@@ -142,6 +142,13 @@ public class GuiTests
         Pump();
         Save(w, dir, "6-tools-dark.png");
         Click(w, "浅色模式");
+
+        // Advanced options expanded: the left column overflows and grows a scrollbar.
+        w.FindControl<TabControl>("Tabs")!.SelectedIndex = 0;
+        w.FindControl<Expander>("AdvancedPanel")!.IsExpanded = true;
+        w.Height = 700;
+        Thread.Sleep(400); Pump(); Thread.Sleep(300); Pump();
+        Save(w, dir, "7-advanced.png");
     }
 
     static void Save(Window w, string dir, string name) => w.CaptureRenderedFrame()?.Save(Path.Combine(dir, name));
