@@ -22,7 +22,7 @@ public static class FFmpeg
         var psi = new ProcessStartInfo(Exe(exe))
         {
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = false,
-            UseShellExecute = false, CreateNoWindow = true, StandardErrorEncoding = Encoding.UTF8,
+            UseShellExecute = false, CreateNoWindow = true, StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var a in args) psi.ArgumentList.Add(a);
         try { return Process.Start(psi) ?? throw new InvalidOperationException(); }
@@ -110,7 +110,7 @@ public static class FFmpeg
         return ms.ToArray();
     }
 
-    /// <summary>Extracts an embedded text subtitle track (0-based among subtitle streams) to an .ass file.</summary>
-    public static Task ExtractSubtitle(string video, int stream, string outAss, CancellationToken ct = default) =>
-        RunText("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", video, "-map", $"0:s:{stream}", "-f", "ass", outAss], ct);
+    /// <summary>Returns an embedded text subtitle track (0-based among subtitle streams) as ASS text. Piped, no temp file.</summary>
+    public static Task<string> ExtractSubtitle(string video, int stream, CancellationToken ct = default) =>
+        RunText("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", video, "-map", $"0:s:{stream}", "-f", "ass", "-"], ct);
 }

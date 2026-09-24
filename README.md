@@ -4,7 +4,8 @@
 适合 TV / Web 字幕转 BD、不同压制版本之间互转，以及音轨不一样（重新混音、配音版、没有音轨）导致 Sushi 失效的场合。
 
 - 桌面端（Avalonia，Windows / macOS / Linux）+ 命令行，逻辑全部在 C# 的 `SubMatcher.Core`
-- 依赖 ffmpeg / ffprobe（放在程序目录、`SUBMATCHER_FFMPEG` 指定的目录，或 PATH 里）
+- 便携版：解压即用，不写注册表、不往用户目录/临时目录写任何东西
+- 依赖 ffmpeg / ffprobe：Release 里每个平台都有自带 ffmpeg 的 `-ffmpeg.zip`；不带的版本需要把它们放进程序目录、`SUBMATCHER_FFMPEG` 指定的目录或 PATH
 
 ## 原理
 
@@ -51,7 +52,11 @@ dotnet run --project src/SubMatcher.Gui
 ./publish.sh win-x64        # 也可以是 linux-x64 / osx-arm64 …，输出到 publish/<rid>/
 ```
 
-画面指纹缓存在 `%LOCALAPPDATA%/SubMatcher/cache`（Linux/macOS 对应 `~/.local/share` 等位置），同一个视频第二次调轴基本不用再等解码。
+画面指纹缓存在程序目录的 `cache/` 里（程序目录不可写时不缓存），同一个视频第二次调轴基本不用再等解码；删掉这个文件夹或在「工具」页清空即可。
+
+## 发布
+
+推送 `v*` tag（如 `git tag v0.1.0 && git push origin v0.1.0`）会触发 GitHub Actions：先跑测试，再为 win-x64 / linux-x64 / osx-arm64 / osx-x64 各打两个便携 zip（带和不带最新稳定版 ffmpeg），最后发布到 Releases。在 Actions 页手动运行则只产出构建产物、不发布。
 
 ## 限制
 

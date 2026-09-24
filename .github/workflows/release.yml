@@ -1,0 +1,142 @@
+name: Release
+
+# Push a tag like v0.1.0 → test, build portable zips for every platform, publish a GitHub Release.
+# Manual runs (workflow_dispatch) build and upload the zips as artifacts only, no release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64,   os: windows-latest }
+          - { rid: linux-x64, os: ubuntu-latest }
+          - { rid: osx-arm64, os: macos-latest }
+          - { rid: osx-x64,   os: macos-latest }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      RID: ${{ matrix.rid }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VERSION="${GITHUB_REF_NAME#v}"; LABEL="$GITHUB_REF_NAME"; else VERSION="0.0.0-dev"; LABEL="dev-${GITHUB_SHA::7}"; fi
+          echo "NAME=SubMatcher-$LABEL-$RID" >> "$GITHUB_ENV"
+          sh publish.sh "$RID" "$VERSION"
+          cp README.md "publish/$RID/"
+
+      - name: Smoke test CLI
+        if: matrix.rid != 'osx-x64' # cross-built on an arm64 runner
+        run: publish/$RID/submatcher-cli* --help | head -1
+
+      - name: Zip (without ffmpeg)
+        run: |
+          mkdir -p dist
+          # Pack from inside the folder so the zip extracts to SubMatcher-…/ with everything portable inside.
+          mv "publish/$RID" "publish/$NAME"
+          if [[ "$RID" == win-* ]]; then (cd publish && 7z a -tzip "../dist/$NAME.zip" "$NAME" >/dev/null)
+          else (cd publish && zip -qry "../dist/$NAME.zip" "$NAME"); fi
+          mv "publish/$NAME" "publish/$RID"
+
+      - name: Fetch latest stable ffmpeg
+        run: |
+          DIR="publish/$RID"
+          mkdir -p ff
+          case "$RID" in
+            win-x64|linux-x64)
+              # BtbN static GPL builds; pick the highest stable release branch (ffmpeg-nX.Y-latest-…).
+              plat=$([[ "$RID" == win-x64 ]] && echo win64 || echo linux64)
+              asset=$(gh release view latest -R BtbN/FFmpeg-Builds --json assets -q '.assets[].name' \
+                | grep -E "^ffmpeg-n[0-9.]+-latest-$plat-gpl-[0-9.]+\.(zip|tar\.xz)$" | sort -V | tail -1)
+              echo "using $asset"
+              gh release download latest -R BtbN/FFmpeg-Builds -p "$asset" -D ff
+              if [[ "$asset" == *.zip ]]; then 7z x "ff/$asset" -o./ff >/dev/null; else tar -xJf "ff/$asset" -C ff; fi
+              cp ff/ffmpeg-*/bin/ffmpeg* ff/ffmpeg-*/bin/ffprobe* "$DIR/"
+              cp ff/ffmpeg-*/LICENSE.txt "$DIR/FFMPEG-LICENSE.txt"
+              src="https://github.com/BtbN/FFmpeg-Builds ($asset)"
+              ;;
+            osx-*)
+              # martin-riedl.de static builds (BtbN has no macOS).
+              arch=$([[ "$RID" == osx-arm64 ]] && echo arm64 || echo amd64)
+              for b in ffmpeg ffprobe; do
+                curl -fsSL -o "ff/$b.zip" "https://ffmpeg.martin-riedl.de/redirect/latest/macos/$arch/release/$b.zip"
+                unzip -o -q "ff/$b.zip" -d "$DIR"
+              done
+              chmod +x "$DIR/ffmpeg" "$DIR/ffprobe"
+              codesign --force -s - "$DIR/ffmpeg" "$DIR/ffprobe"
+              src="https://ffmpeg.martin-riedl.de ($arch, latest release)"
+              ;;
+          esac
+          ver=unknown
+          if [[ "$RID" != osx-x64 ]]; then ver=$("$DIR"/ffmpeg* -version | head -1); fi
+          printf 'Bundled FFmpeg: %s\nSource: %s\nFFmpeg is licensed under the GPL; its source code is available at https://ffmpeg.org/download.html\n' \
+            "$ver" "$src" > "$DIR/FFMPEG-NOTICE.txt"
+          cat "$DIR/FFMPEG-NOTICE.txt"
+
+      - name: Zip (with ffmpeg)
+        run: |
+          mv "publish/$RID" "publish/$NAME"
+          if [[ "$RID" == win-* ]]; then (cd publish && 7z a -tzip "../dist/$NAME-ffmpeg.zip" "$NAME" >/dev/null)
+          else (cd publish && zip -qry "../dist/$NAME-ffmpeg.zip" "$NAME"); fi
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: dist/*.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip -R "$GITHUB_REPOSITORY" \
+            --title "SubMatcher $GITHUB_REF_NAME" --generate-notes --notes "$(cat <<'EOF'
+          便携版，解压即用，不安装、不往系统里写任何东西（画面指纹缓存在程序目录的 `cache/` 里）。
+
+          | 文件 | 说明 |
+          |---|---|
+          | `SubMatcher-…-<平台>-ffmpeg.zip` | 自带最新稳定版 ffmpeg / ffprobe，推荐 |
+          | `SubMatcher-…-<平台>.zip` | 不带 ffmpeg，需要自己把 ffmpeg / ffprobe 放进程序目录或 PATH |
+
+          平台：`win-x64` · `linux-x64` · `osx-arm64`（Apple Silicon）· `osx-x64`（Intel Mac）
+
+          macOS 首次运行如被拦截：`xattr -cr SubMatcher-*/`
+          EOF
+          )"

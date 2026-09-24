@@ -49,9 +49,7 @@ public static class Sync
         if (string.IsNullOrEmpty(srcSub))
         {
             progress?.Report(new("提取内封字幕", 0));
-            var tmp = Path.Combine(Path.GetTempPath(), $"submatcher_{Guid.NewGuid():N}.ass");
-            try { await FFmpeg.ExtractSubtitle(srcVideo, o.SubtitleStream, tmp, ct); doc = SubtitleDoc.Load(tmp); }
-            finally { File.Delete(tmp); }
+            doc = SubtitleDoc.Parse(await FFmpeg.ExtractSubtitle(srcVideo, o.SubtitleStream, ct), SubFormat.Ass);
             if (!IsSub(output) || Path.GetExtension(output).Equals(".srt", StringComparison.OrdinalIgnoreCase)) output = Path.ChangeExtension(output, ".ass");
         }
         else doc = SubtitleDoc.Load(srcSub);

@@ -75,18 +75,19 @@ public sealed class Fingerprint
         var cache = CachePath(path, fps);
         if (useCache && File.Exists(cache))
         {
-            try { return new Fingerprint(await File.ReadAllBytesAsync(cache, ct), fps); } catch (IOException) { }
+            try { return new Fingerprint(await File.ReadAllBytesAsync(cache, ct), fps); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
         var raw = await FFmpeg.ReadThumbFrames(path, fps, W, H, hwaccel, onFrames, ct);
         if (raw.Length < Dim) throw new InvalidOperationException($"没有解出任何画面：{path}");
         if (useCache)
         {
-            try { Directory.CreateDirectory(Path.GetDirectoryName(cache)!); await File.WriteAllBytesAsync(cache, raw, ct); } catch (IOException) { }
+            try { Directory.CreateDirectory(Path.GetDirectoryName(cache)!); await File.WriteAllBytesAsync(cache, raw, ct); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
         return new Fingerprint(raw, fps);
     }
 
-    public static string CacheDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SubMatcher", "cache");
+    /// <summary>Portable: the cache lives next to the executable, never in the user profile. Unwritable folder = no cache.</summary>
+    public static string CacheDir => Path.Combine(AppContext.BaseDirectory, "cache");
 
     static string CachePath(string path, double fps)
     {
