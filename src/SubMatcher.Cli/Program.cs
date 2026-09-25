@@ -191,6 +191,47 @@ try
             return 0;
         }
 
+        case "merge":
+        {
+            Need(pos, 1, "merge <原盘> [字幕或目录]...");
+            // A folder holding subtitles (even BDMV/STREAM with 00003.ass) is subtitles; any other path in or above a disc is a disc.
+            var discArgs = pos.Where(p => Directory.Exists(p) ? !Directory.EnumerateFiles(p).Any(Sync.IsSub) && Bdmv.FindDiscs([p]).Count > 0 : !Sync.IsSub(p) && Bdmv.FindRoot(p) != null).ToList();
+            var subArgs = pos.Except(discArgs).ToList();
+            var discs = Bdmv.FindDiscs(discArgs);
+            if (discs.Count == 0) { Console.Error.WriteLine("没有找到原盘（含 BDMV/PLAYLIST 的文件夹）"); return 1; }
+            if (subArgs.Count == 0)
+            {
+                foreach (var root in discs)
+                {
+                    var lists = Bdmv.Playlists(root);
+                    var main = Bdmv.MainPlaylist(lists);
+                    Console.WriteLine($"{root}");
+                    foreach (var l in lists.Where(l => l.Duration >= 60))
+                        Console.WriteLine($"  {(l == main ? "★" : " ")} {l.Name}.mpls  {TimeSpan.FromSeconds(l.Duration):h\\:mm\\:ss}  {l.Items.Count} 段  {l.Chapters.Count} 章  {string.Join(" ", l.Items.Select(i => i.Clip).Take(12))}{(l.Items.Count > 12 ? " …" : "")}");
+                    if (main != null && Flag("chapters"))
+                        foreach (var c in main.Chapters) Console.WriteLine($"      第 {c.Number,3} 章  {TimeSpan.FromSeconds(c.Time):h\\:mm\\:ss\\.fff}  {main.Items[c.Item].Clip}");
+                }
+                return 0;
+            }
+            var subFiles = subArgs.SelectMany(p => Directory.Exists(p) ? Directory.EnumerateFiles(p).Where(Sync.IsSub) : [p]).ToList();
+            var (plans, notes) = SubMerge.Plan(discs, subFiles, Get("playlist") is { } pl && Bdmv.FindRoot(pl) is { } plRoot ? new Dictionary<string, string> { [plRoot] = Path.GetFullPath(pl) } : null);
+            foreach (var plan in plans)
+            {
+                Console.WriteLine($"\n{Path.GetFileName(plan.Disc)} · {plan.Playlist.Name}.mpls（{TimeSpan.FromSeconds(plan.Playlist.Duration):h\\:mm\\:ss}）{(plan.Lang == null ? "" : plan.Lang == "sc" ? " 简体" : " 繁体")}");
+                foreach (var e in plan.Episodes)
+                    Console.WriteLine($"  {TimeSpan.FromSeconds(e.Offset):h\\:mm\\:ss\\.ff}  {(e.Clip != null ? $"片段 {e.Clip}" : $"第 {e.Chapter} 章")}  余 {e.Slack,6:0.0}s  {Path.GetFileName(e.Sub)}");
+            }
+            foreach (var n in notes) Console.WriteLine("! " + n);
+            if (Flag("dry-run") || plans.Count == 0) return plans.Count == 0 ? 1 : 0;
+            foreach (var plan in plans)
+            {
+                var (written, wn) = SubMerge.Write(plan);
+                foreach (var w in written) Console.WriteLine($"→ {w}");
+                foreach (var n in wn) Console.WriteLine("! " + n);
+            }
+            return 0;
+        }
+
         case "clear-cache":
             if (Directory.Exists(Fingerprint.CacheDir)) Directory.Delete(Fingerprint.CacheDir, true);
             Console.WriteLine("缓存已清空");
@@ -290,7 +331,7 @@ static void Need(List<string> pos, int n, string usage)
 
 static (List<string>, Dictionary<string, string>) ParseArgs(string[] a)
 {
-    string[] flags = ["no-snap", "no-crop", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run", "files"];
+    string[] flags = ["no-snap", "no-crop", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run", "files", "chapters"];
     var pos = new List<string>();
     var opt = new Dictionary<string, string>();
     for (int i = 0; i < a.Length; i++)
@@ -345,6 +386,10 @@ static void Usage() => Console.WriteLine("""
         下载第 N 组的简体/繁体/全部字幕
     submatcher-cli rename <视频目录> [字幕目录]... [--sc sc] [--tc tc] [--copy] [--no-backup] [--dry-run]
         按集数把字幕改成视频名（xx.sc.ass / xx.tc.ass），子集化过的优先；被改名/覆盖的原字幕备份到「字幕备份」
+    submatcher-cli merge <原盘>... [--chapters]      列出播放列表（★ = 正片），--chapters 连章节一起列
+    submatcher-cli merge <原盘>... <字幕目录或文件>... [--playlist xx.mpls] [--dry-run]
+        原盘字幕合并：每集的字幕接到播放列表里这一集开始的位置，合成一个，写到「原盘文件夹名.sc.ass」和 PLAYLIST 里
+        几卷一起给时按集数自动分到各卷；00003.ass 这种按 m2ts 调好的字幕直接放到那个片段上
     submatcher-cli clear-cache
     """);
 

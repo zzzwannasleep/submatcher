@@ -220,6 +220,34 @@ public class GuiTests
 
 
     [AvaloniaFact]
+    public void MergePagePlansEpisodesAndLetsAStartBeMoved()
+    {
+        var w = NewWindow(tourDone: true);
+        var dir = TempDir();
+        var pl = Directory.CreateDirectory(Path.Combine(dir, "Vol.1", "BDMV", "PLAYLIST")).FullName;
+        File.WriteAllBytes(Path.Combine(pl, "00001.mpls"), MergeTests.Mpls([("00010", 1420), ("00011", 1420)], [(0, 0), (0, 600), (1, 0), (1, 600)]));
+        var subs = Directory.CreateDirectory(Path.Combine(dir, "subs")).FullName;
+        foreach (var n in new[] { 1, 2 }) File.WriteAllText(Path.Combine(subs, $"Show 第{n}集.srt"), "1\n00:00:01,000 --> 00:23:00,000\n台词\n");
+        w.FindControl<TabControl>("Tabs")!.SelectedItem = w.FindControl<TabItem>("TabTools");
+        Pump();
+        w.AcceptPaths([Path.Combine(dir, "Vol.1"), subs]);
+        Assert.Equal(subs, w.FindControl<TextBox>("MergeSubs")!.Text);
+        w.FindControl<Border>("MergeCard")!.BringIntoView();
+        Pump();
+        w.GetVisualDescendants().OfType<Button>().First(b => b.Content as string == "预览" && w.FindControl<Border>("MergeCard")!.IsVisualAncestorOf(b)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Pump();
+        var boxes = w.FindControl<StackPanel>("MergeRows")!.GetVisualDescendants().OfType<ComboBox>().ToList();
+        Assert.Equal(2, boxes.Count);
+        Assert.Equal([0, 2], boxes.Select(b => b.SelectedIndex));
+        boxes[1].SelectedIndex = 3; // episode 2 by hand onto chapter 4
+        Pump();
+        Click(w, "合并");
+        var merged = SubtitleDoc.Load(Path.Combine(dir, "Vol.1.srt"));
+        Assert.Equal([1000L, 1000 + 2020 * 1000], merged.Events.Select(e => e.Start));
+        Assert.True(File.Exists(Path.Combine(pl, "00001.srt")));
+    }
+
+    [AvaloniaFact]
     public void RenamePageMatchesDroppedFolders()
     {
         var w = NewWindow(tourDone: true);

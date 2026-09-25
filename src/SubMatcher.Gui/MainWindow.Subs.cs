@@ -360,6 +360,106 @@ public partial class MainWindow
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { RenLog.Text += "\n\n失败：" + ex.Message; }
     }
 
+    // ---------------- 原盘字幕合并 ----------------
+
+    List<MergePlan> _mergePlans = [];
+    string? _mergeKey; // the inputs _mergePlans was made from
+    string MergeKey => $"{MergeDisc.Text}|{MergeSubs.Text}";
+
+    void MergeShow(string s) { MergeLog.IsVisible = s.Length > 0; MergeLog.Text = s; }
+
+    bool MergePlanNow()
+    {
+        MergeRows.Children.Clear();
+        if (Blank(MergeDisc.Text) is not { } disc) { MergeShow("先选原盘"); return false; }
+        if (Blank(MergeSubs.Text) is not { } subs) { MergeShow("先选字幕文件夹"); return false; }
+        try
+        {
+            var files = Directory.Exists(subs) ? Directory.EnumerateFiles(subs).Where(Sync.IsSub).ToList() : [subs];
+            // A dropped .mpls = use that playlist instead of the longest one.
+            var chosen = disc.EndsWith(".mpls", StringComparison.OrdinalIgnoreCase) && Bdmv.FindRoot(disc) is { } root
+                ? new Dictionary<string, string> { [root] = disc } : null;
+            var (plans, notes) = SubMerge.Plan([disc], files, chosen);
+            _mergePlans = plans;
+            _mergeKey = MergeKey;
+            ShowMergePlans();
+            MergeShow(string.Join("\n", notes.Select(n => "! " + n)));
+            return plans.Count > 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException) { MergeShow("读不了原盘：" + ex.Message); return false; }
+    }
+
+    static string Clock(double s) => TimeSpan.FromSeconds(s).ToString(s >= 3600 ? @"h\:mm\:ss" : @"mm\:ss");
+
+    void ShowMergePlans()
+    {
+        MergeRows.Children.Clear();
+        for (int pi = 0; pi < _mergePlans.Count; pi++)
+        {
+            var plan = _mergePlans[pi];
+            MergeRows.Children.Add(new TextBlock
+            {
+                Text = $"{Path.GetFileName(plan.Disc)} · {plan.Playlist.Name}.mpls（{Clock(plan.Playlist.Duration)}）{(plan.Lang == "sc" ? " · 简体" : plan.Lang == "tc" ? " · 繁体" : "")}",
+                FontWeight = Avalonia.Media.FontWeight.SemiBold, Margin = new(0, pi == 0 ? 0 : 8, 0, 2),
+            });
+            // Where each episode starts can be changed to any chapter; the others stay put.
+            var starts = plan.Playlist.Chapters.Select(c => (c.Time, Label: $"第 {c.Number} 章  {Clock(c.Time)}  ({plan.Playlist.Items[c.Item].Clip})")).ToList();
+            for (int ei = 0; ei < plan.Episodes.Count; ei++)
+            {
+                var ep = plan.Episodes[ei];
+                var options = starts.ToList();
+                int sel = options.FindIndex(o => Math.Abs(o.Time - ep.Offset) < 0.05);
+                if (sel < 0) { options.Insert(0, (ep.Offset, $"片段 {ep.Clip}  {Clock(ep.Offset)}")); sel = 0; }
+                var box = new ComboBox { ItemsSource = options.Select(o => o.Label).ToList(), SelectedIndex = sel, MinWidth = 220, FontSize = 12 };
+                int p = pi, i = ei;
+                box.SelectionChanged += (_, _) =>
+                {
+                    if (box.SelectedIndex < 0 || Math.Abs(options[box.SelectedIndex].Time - _mergePlans[p].Episodes[i].Offset) < 0.001) return;
+                    _mergePlans[p] = SubMerge.Move(_mergePlans[p], i, options[box.SelectedIndex].Time);
+                    Dispatcher.UIThread.Post(ShowMergePlans);
+                };
+                var slack = new TextBlock
+                {
+                    Text = ep.Slack < -10 ? $"⚠ 压到下一集 {-ep.Slack:0}s" : $"余 {ep.Slack:0}s",
+                    FontSize = 12, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, MinWidth = 90,
+                };
+                ToolTip.SetTip(slack, "这一集最后一句字幕之后、下一集开始之前的空余");
+                if (ep.Slack < -10) slack.Foreground = Avalonia.Media.Brushes.OrangeRed;
+                else slack.Bind(TextBlock.ForegroundProperty, slack.GetResourceObservable("SemiColorText2"));
+                var name = new TextBlock { Text = Path.GetFileName(ep.Sub), FontSize = 12, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis };
+                ToolTip.SetTip(name, ep.Sub);
+                var row = new Avalonia.Controls.Grid { ColumnDefinitions = new("Auto,12,Auto,12,*") };
+                row.Children.Add(box);
+                Avalonia.Controls.Grid.SetColumn(slack, 2); row.Children.Add(slack);
+                Avalonia.Controls.Grid.SetColumn(name, 4); row.Children.Add(name);
+                MergeRows.Children.Add(row);
+            }
+        }
+    }
+
+    void MergePreview(object? sender, RoutedEventArgs e) => MergePlanNow();
+
+    void MergeRun(object? sender, RoutedEventArgs e)
+    {
+        // Keep hand-picked starts; plan again only when there is no preview of these inputs.
+        if (_mergePlans.Count == 0 || _mergeKey != MergeKey) { if (!MergePlanNow()) return; }
+        var log = new List<string>();
+        int n = 0;
+        foreach (var plan in _mergePlans)
+        {
+            try
+            {
+                var (written, notes) = SubMerge.Write(plan);
+                n += written.Count;
+                log.AddRange(written.Select(w => "→ " + w));
+                log.AddRange(notes.Select(x => "! " + x));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { log.Add($"! {Path.GetFileName(plan.Disc)}：{ex.Message}"); }
+        }
+        MergeShow(string.Join("\n", log));
+        Toast("原盘字幕合并", n > 0 ? $"已写出 {n} 个字幕" : "没有写出字幕", n > 0 ? NotificationType.Success : NotificationType.Warning);
+    }
+
     // ---------------- 比例调整 ----------------
 
     async void BrowseFitVideo(object? sender, RoutedEventArgs e) { if (await PickFile(VideoType) is { } p) FitVideo.Text = p; }

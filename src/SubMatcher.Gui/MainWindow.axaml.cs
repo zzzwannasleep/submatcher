@@ -202,8 +202,12 @@ public partial class MainWindow : Window
                 case 2 when Sync.IsSub(p):
                     ToolSub.Text = p;
                     break;
+                case 2 when p.EndsWith(".mpls", StringComparison.OrdinalIgnoreCase) || Directory.Exists(p) && Bdmv.FindDiscs([p]).Count > 0 && !Directory.EnumerateFiles(p).Any(Sync.IsSub):
+                    MergeDisc.Text = p;
+                    break;
                 case 2 when Directory.Exists(p):
                     SubsetInput.Text = ZhInput.Text = p;
+                    if (!string.IsNullOrWhiteSpace(MergeDisc.Text)) MergeSubs.Text = p;
                     break;
                 case 0 when Sync.IsSub(p):
                     SrcSub.Text = p;

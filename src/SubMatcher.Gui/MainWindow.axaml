@@ -424,6 +424,38 @@
                 </StackPanel>
               </Border>
 
+              <Border x:Name="MergeCard" Classes="card">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="h" Text="原盘字幕合并（BDMV）" />
+                  <TextBlock Classes="hint" TextWrapping="Wrap"
+                             Text="原盘一卷里几集连着放，字幕却是一集一个。按播放列表把每集字幕接到这一集开始的位置，合成一个，放在原盘文件夹旁边和 PLAYLIST 里，播放器打开原盘就能加载。几卷一起放：按集数自动分到各卷；用画面调轴对着 STREAM 里的 m2ts 调好的字幕（00003.ass）会精确放到那个片段上。" />
+                  <Grid ColumnDefinitions="*,12,*">
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="原盘（一卷、几卷的上级文件夹，或某个 .mpls）" />
+                      <TextBox x:Name="MergeDisc" Watermark="拖入或浏览…">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="MergeDisc" Click="BrowseFolder" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Classes="field" Text="每集的字幕（文件夹）" />
+                      <TextBox x:Name="MergeSubs" Watermark="拖入或浏览…">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="MergeSubs" Click="BrowseFolder" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                  </Grid>
+                  <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                    <Button Content="预览" Click="MergePreview" />
+                    <Button x:Name="MergeBtn" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="合并" Click="MergeRun" MinWidth="96" HorizontalContentAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel x:Name="MergeRows" Spacing="4" />
+                  <SelectableTextBlock x:Name="MergeLog" FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
+              </Border>
+
               <Border x:Name="ZhCard" Classes="card">
                 <StackPanel Spacing="10">
                   <Grid ColumnDefinitions="*,Auto">

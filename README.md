@@ -35,6 +35,13 @@ macOS 第一次打开被拦的话，对解压出来的文件夹执行 `xattr -cr
 
 整季批量处理、手动平移、转帧率、转编码、简繁转换（[繁化姬](https://zhconvert.org)），还有字体子集化（基于 [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss)），在另外几个标签页里。
 
+原盘字幕合并（BDMV，参考 [BluraySubtitle](https://github.com/Haruite/BluraySubtitle)）：原盘一卷里连着放好几集，字幕却是一集一个。这个功能读播放列表的章节和片段，把每集字幕接到这一集开始的位置，合成一个字幕，播放器打开原盘就能加载。
+- 每集从哪开始，是对所有集一起求解的，不靠固定阈值；字幕结尾比这一集早，也不会错位。
+- 几卷一起给时，按集数自动分到各卷。
+- 对着 m2ts 调好轴的字幕，直接精确放到对应片段上。
+- 简繁分开输出。
+- 样式冲突会改名，内嵌字体全部保留。
+
 「下载与改名」页：从 Telegram 字幕频道 [@anime_chinese_subtitles](https://t.me/anime_chinese_subtitles) 按片名检索，按平台和简繁合并，选一个平台就把它的全部简体或繁体字幕下下来（手机扫码登录一次）。调完轴、子集化完，一键把字幕改成视频名（参考 [SubRenamer](https://github.com/qwqcode/SubRenamer)），播放器直接加载。
 
 <p align="center">
@@ -62,4 +69,4 @@ dotnet test
 
 ## 致谢
 
-[Sushi](https://github.com/tp7/Sushi) · [ACGRIP BBS](https://bbs.acgrip.com/thread-1936-1-1.html) · [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss) · [SubRenamer](https://github.com/qwqcode/SubRenamer) · [版權中文字幕](https://t.me/anime_chinese_subtitles) · [繁化姬](https://zhconvert.org) · [WTelegramClient](https://github.com/wiz0u/WTelegramClient) · [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) · [FFmpeg](https://ffmpeg.org)
+[Sushi](https://github.com/tp7/Sushi) · [ACGRIP BBS](https://bbs.acgrip.com/thread-1936-1-1.html) · [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss) · [BluraySubtitle](https://github.com/Haruite/BluraySubtitle) · [SubRenamer](https://github.com/qwqcode/SubRenamer) · [版權中文字幕](https://t.me/anime_chinese_subtitles) · [繁化姬](https://zhconvert.org) · [WTelegramClient](https://github.com/wiz0u/WTelegramClient) · [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) · [FFmpeg](https://ffmpeg.org)
