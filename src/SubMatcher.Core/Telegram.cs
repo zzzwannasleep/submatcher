@@ -26,8 +26,15 @@ public static partial class TgSubs
     [GeneratedRegex(@"^\s*(CHS|CHT|简|簡|繁)[\s_\-]+", RegexOptions.IgnoreCase)]
     private static partial Regex LangPrefix();
 
+    // Language as the last part instead: "…_EP14.BG.zh-Hans", "… 12_简体中文", "….sc"
+    [GeneratedRegex(@"[\s_.\-]+(zh-?Hans|zh-?CN|zh-?SG|chs|sc|简体中文|簡體中文|简体|簡體|简中|簡中|zh-?Hant|zh-?TW|zh-?HK|cht|tc|繁体中文|繁體中文|繁体|繁體|繁中)$", RegexOptions.IgnoreCase)]
+    private static partial Regex LangSuffix();
+
+    [GeneratedRegex(@"^(zh-?Hans|zh-?CN|zh-?SG|chs|sc|简|簡)", RegexOptions.IgnoreCase)]
+    private static partial Regex SimplifiedTag();
+
     // Episode marks at the end of the title: 第13集 / 第7話 / EP12 / E05 / 12 / 12.5 / 12v2
-    [GeneratedRegex(@"[\s_\-]*(?:第\s*\d+(?:\.\d+)?\s*[話话集回]|EP?\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?)(?:v\d)?\s*$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"[\s_.\-]*(?:第\s*\d+(?:\.\d+)?\s*[話话集回]|EP?\s*\d+(?:\.\d+)?|\d+(?:\.\d+)?)(?:v\d)?\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex EpisodeTail();
 
     [GeneratedRegex(@"[\s_]+")]
@@ -43,16 +50,43 @@ public static partial class TgSubs
             lang = m.Groups[1].Value.ToUpperInvariant() switch { "CHS" or "简" or "簡" => "CHS", _ => "CHT" };
             name = name[m.Length..];
         }
+        else if (LangSuffix().Match(name) is { Success: true } s)
+        {
+            lang = SimplifiedTag().IsMatch(s.Groups[1].Value) ? "CHS" : "CHT";
+            name = name[..s.Index];
+        }
         string platform = "";
-        int us = name.LastIndexOf('_');
-        // "…_iQIYI" is a platform, "…_第13集" / "…_12" is not
-        if (us > 0 && EpisodeTail().Match(name[us..]) is not { Success: true, Index: 0 })
+        // platform after the last "_" or "." ("…_iQIYI", "…_EP14.BG"); "…_第13集" / "…_12" is not one
+        int us = name.LastIndexOfAny(['_', '.']);
+        if (us > 0 && name[(us + 1)..].Any(char.IsLetter) && EpisodeTail().Match(name[us..]) is not { Success: true, Index: 0 })
         {
             platform = name[(us + 1)..].Trim();
             name = name[..us];
         }
         var title = Spaces().Replace(EpisodeTail().Replace(name, ""), " ").Trim(' ', '-', '_');
         return (lang, title.Length > 0 ? title : name.Trim(), platform);
+    }
+
+    static double EpisodeNum(TgFile f) => Sync.EpisodeOf(f.Name) is { } e ? double.Parse(e, System.Globalization.CultureInfo.InvariantCulture) : double.MaxValue;
+
+    /// <summary>Files in episode order (第2集 before 第10集).</summary>
+    public static List<TgFile> ByEpisode(IEnumerable<TgFile> files) =>
+        files.OrderBy(EpisodeNum).ThenBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList();
+
+    /// <summary>"第 1–7、9–12 集" — gaps show at a glance; "" when no episode numbers are found.</summary>
+    public static string EpisodeSummary(IEnumerable<TgFile> files)
+    {
+        var eps = files.Select(EpisodeNum).Where(e => e != double.MaxValue).Distinct().Order().ToList();
+        if (eps.Count == 0) return "";
+        var parts = new List<string>();
+        for (int i = 0; i < eps.Count;)
+        {
+            int j = i;
+            while (j + 1 < eps.Count && eps[j + 1] == eps[j] + 1) j++;
+            parts.Add(j == i ? $"{eps[i]}" : $"{eps[i]}–{eps[j]}");
+            i = j + 1;
+        }
+        return $"第 {string.Join("、", parts)} 集";
     }
 
     /// <summary>Merge search hits by (title, platform). Reposted files keep only the newest copy.</summary>
@@ -64,7 +98,7 @@ public static partial class TgSubs
             .GroupBy(x => (x.P.Title.ToLowerInvariant(), x.P.Platform.ToLowerInvariant()))
             .Select(g =>
             {
-                List<TgFile> Of(string lang) => g.Where(x => x.P.Lang == lang).Select(x => x.File).OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase).ToList();
+                List<TgFile> Of(string lang) => ByEpisode(g.Where(x => x.P.Lang == lang).Select(x => x.File));
                 var first = g.First().P;
                 return new TgGroup(first.Title, first.Platform, Of("CHS"), Of("CHT"), Of(""));
             })

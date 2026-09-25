@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using SubMatcher.Core;
 
 namespace SubMatcher.Gui;
@@ -230,13 +231,76 @@ public partial class MainWindow
             // Progress must be created here on the UI thread: inside Task.Run it would call back on the thread pool.
             var found = new Progress<int>(n => TgLog.Text = $"检索中… {n} 个文件");
             var files = await Task.Run(() => tg.Search(channel, q, found));
-            _groups = TgSubs.Group(files);
-            TgGroups.ItemsSource = _groups.Select(Describe).ToList();
-            TgGroups.SelectedIndex = _groups.Count > 0 ? 0 : -1;
+            ShowGroups(TgSubs.Group(files));
             TgLog.Text = _groups.Count == 0 ? "没找到。换个关键词，简体 / 繁体片名都试试" : $"{files.Count} 个文件，合并为 {_groups.Count} 组";
         }
         catch (Exception ex) when (ex is not OperationCanceledException) { TgLog.Text = "检索失败：" + ex.Message; }
         finally { TgSearchBtn.IsEnabled = TgDownloadBtn.IsEnabled = true; }
+    }
+
+    /// <summary>Result list: one row per group; the selected row expands to list its files, "收起" folds it back.</summary>
+    internal void ShowGroups(List<TgGroup> groups)
+    {
+        _groups = groups;
+        TgGroups.ItemsSource = groups.Select(GroupItem).ToList();
+        TgGroups.SelectedIndex = groups.Count > 0 ? 0 : -1;
+    }
+
+    Control GroupItem(TgGroup g)
+    {
+        var detail = new StackPanel { Spacing = 4, Margin = new(0, 8, 0, 4), IsVisible = false };
+        foreach (var (label, files) in new[] { ("简体", g.Chs), ("繁体", g.Cht), ("其他", g.Other) })
+        {
+            if (files.Count == 0) continue;
+            var eps = TgSubs.EpisodeSummary(files);
+            detail.Children.Add(new TextBlock
+            {
+                Text = $"{label} {files.Count} 个{(eps.Length > 0 ? " · " + eps : "")}", FontWeight = Avalonia.Media.FontWeight.SemiBold, FontSize = 12,
+                Margin = new(0, 4, 0, 0), TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            });
+            var list = new SelectableTextBlock
+            {
+                Text = string.Join("\n", files.Select(f => f.Name)), FontSize = 12, TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                FontFamily = new Avalonia.Media.FontFamily("Cascadia Mono,Consolas,Menlo,monospace"),
+            };
+            list.Bind(TextBlock.ForegroundProperty, list.GetResourceObservable("SemiColorText2"));
+            // A season is dozens of names: keep the row short so the other results stay in view.
+            detail.Children.Add(new ScrollViewer { Content = list, MaxHeight = 96 });
+        }
+        var collapse = new Button
+        {
+            Content = "收起", Theme = this.FindResource("BorderlessButton") as Avalonia.Styling.ControlTheme,
+            Padding = new(8, 0), IsVisible = false, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+        };
+        var header = new Avalonia.Controls.Grid { ColumnDefinitions = new("*,Auto"), MinHeight = 24 };
+        header.Children.Add(new TextBlock { Text = Describe(g), VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center, TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis });
+        Avalonia.Controls.Grid.SetColumn(collapse, 1);
+        header.Children.Add(collapse);
+        var item = new StackPanel { Children = { header, detail } };
+        collapse.Click += (_, e) => { SetExpanded(item, false); e.Handled = true; };
+        // Tapping a folded row (already selected, so no SelectionChanged) opens it again.
+        item.Tapped += (_, e) =>
+        {
+            if (e.Source is Visual v && v.FindAncestorOfType<Button>(true) == collapse) return;
+            if (!detail.IsVisible) SetExpanded(item, true);
+        };
+        return item;
+    }
+
+    static void SetExpanded(StackPanel item, bool on)
+    {
+        var detail = item.Children[1];
+        if (detail.IsVisible == on) return;
+        detail.IsVisible = on;
+        ((Avalonia.Controls.Grid)item.Children[0]).Children[1].IsVisible = on;
+        if (on) _ = new DropDownReveal { Duration = TimeSpan.FromMilliseconds(160) }.Start(null, detail, true, default);
+    }
+
+    void TgGroupSelected(object? sender, SelectionChangedEventArgs e)
+    {
+        e.Handled = true; // don't bubble up to the tab control
+        foreach (var item in (TgGroups.ItemsSource as IEnumerable<Control>)?.OfType<StackPanel>() ?? [])
+            SetExpanded(item, item == TgGroups.SelectedItem);
     }
 
     async void TgDownload(object? sender, RoutedEventArgs e)

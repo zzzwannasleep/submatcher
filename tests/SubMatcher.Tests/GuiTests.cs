@@ -238,16 +238,43 @@ public class GuiTests
 
         if (Environment.GetEnvironmentVariable("SUBMATCHER_SHOTS") is { } shots)
         {
-            w.FindControl<ListBox>("TgGroups")!.ItemsSource = new[]
-            {
-                "遭到流放的转生重骑士凭借游戏知识大开无双  ·  Viu    简 13 / 繁 13",
-                "遭到流放的轉生重騎士憑藉遊戲知識大開無雙  ·  iQIYI    简 13 / 繁 13",
-                "遭到流放的转生重骑士凭借游戏知识大开无双  ·  meWATCH    简 13 / 繁 13",
-            };
-            w.FindControl<ListBox>("TgGroups")!.SelectedIndex = 0;
             Pump();
             Save(w, shots, "subs-page.png");
         }
+    }
+
+    [AvaloniaFact]
+    public void SearchResultsExpandAndCollapse()
+    {
+        var w = NewWindow(tourDone: true);
+        w.FindControl<TabControl>("Tabs")!.SelectedItem = w.FindControl<TabItem>("TabSubs");
+        Pump();
+        w.ShowGroups(TgSubs.Group([
+            new(1, "CHS 葬送的芙莉莲 01_meWATCH.srt", 1), new(2, "CHT 葬送的芙莉莲 01_meWATCH.srt", 1),
+            new(3, "葬送的芙莉莲_EP01.BG.zh-Hans.srt", 1), new(4, "葬送的芙莉莲_EP01.BG.zh-Hant.srt", 1),
+        ]));
+        Pump();
+        var list = w.FindControl<ListBox>("TgGroups")!;
+        var items = ((IEnumerable<Control>)list.ItemsSource!).Cast<StackPanel>().ToList();
+        Assert.Equal(2, items.Count);
+        bool Open(StackPanel p) => p.Children[1].IsVisible;
+        Button Fold(StackPanel p) => (Button)((Grid)p.Children[0]).Children[1];
+        void ClickAt(Visual v, double x, double y)
+        {
+            var pt = v.TranslatePoint(new Avalonia.Point(x, y), w)!.Value;
+            w.MouseDown(pt, MouseButton.Left); w.MouseUp(pt, MouseButton.Left); Pump();
+        }
+        Assert.True(Open(items[0]));   // first result opens with its file list
+        Assert.Contains("CHS 葬送的芙莉莲 01_meWATCH.srt", ((SelectableTextBlock)items[0].Children[1].GetVisualDescendants().OfType<SelectableTextBlock>().First()).Text);
+        ClickAt(Fold(items[0]), 5, 5); // 收起
+        Assert.False(Open(items[0]));
+        Assert.Equal(0, list.SelectedIndex); // still the download target
+        ClickAt(items[0], 10, 8);      // tap the folded row → open again
+        Assert.True(Open(items[0]));
+        ClickAt(items[1], 10, 8);      // another row: it opens, the first folds
+        Assert.Equal(1, list.SelectedIndex);
+        Assert.True(Open(items[1]));
+        Assert.False(Open(items[0]));
     }
 
     static void Save(Window w, string dir, string name) => w.CaptureRenderedFrame()?.Save(Path.Combine(dir, name));
@@ -306,13 +333,15 @@ public class GuiTests
             w.FindControl<TextBlock>("TgStatus")!.Text = "已登录";
             w.FindControl<Button>("TgLoginBtn")!.Content = "退出登录";
             w.FindControl<TextBox>("TgQuery")!.Text = "秘密基地";
-            var groups = w.FindControl<ListBox>("TgGroups")!;
-            groups.ItemsSource = new[]
-            {
-                "秘密基地  ·  Bilibili    简 12 / 繁 12", "秘密基地  ·  Crunchyroll    简 12 / 繁 12",
-                "祕密基地  ·  iQIYI    简 12 / 繁 12", "秘密基地  ·  Viu    简 11 / 繁 11",
-            };
-            groups.SelectedIndex = 0;
+            // a realistic result: 12 episodes on 4 platforms, the first one expanded
+            List<TgFile> files = [];
+            foreach (var (plat, title, n) in new[] { ("Bilibili", "秘密基地", 12), ("Crunchyroll", "秘密基地", 12), ("iQIYI", "祕密基地", 12), ("Viu", "秘密基地", 12) })
+                for (int ep = 1; ep <= n; ep++)
+                    if (plat != "Viu" || ep != 8) // one missing episode, to show the gap in the summary
+                    foreach (var lang in new[] { "CHS", "CHT" })
+                        files.Add(new(files.Count, $"{lang}_{title}_第{ep}集_{plat}.srt", 30000));
+            w.ShowGroups(TgSubs.Group(files));
+            w.FindControl<ListBox>("TgGroups")!.SelectedIndex = 3; // Viu, the one with a missing episode
             w.FindControl<TextBlock>("TgLog")!.Text = @"已下载 12 个 → D:\Anime\字幕下载\秘密基地 [Bilibili]";
             w.FindControl<TextBox>("RenVideos")!.Text = @"D:\Anime\[BD] 秘密基地";
             w.FindControl<TextBox>("RenSubs")!.Text = @"D:\Anime\字幕下载\秘密基地 [Bilibili]";

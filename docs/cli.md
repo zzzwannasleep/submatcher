@@ -195,6 +195,7 @@ submatcher-cli tg download 遭到流放 --pick 1 --lang sc -o ./subs
 
 | 参数 | 说明 |
 |---|---|
+| `--files` | search 时列出每组包含的文件 |
 | `--channel <名字>` | 频道，默认 `anime_chinese_subtitles`；合辑 / 旧番 `anime_chinese_subtitles_old`，非日本动画 `chinese_subtitles` |
 | `--pick N` | 下载第 N 组（只有一组时可以不写） |
 | `--lang sc\|tc\|all` | 简体 / 繁体 / 全部，默认全部 |

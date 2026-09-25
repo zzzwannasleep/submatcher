@@ -244,7 +244,7 @@
                   <Button x:Name="TgSearchBtn" Grid.Column="4" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="检索" Click="TgSearch" MinWidth="72" />
                 </Grid>
                 <TextBlock Grid.Row="2" Classes="hint" Text="按「片名 + 平台」合并，不分集；选一组下载该平台的全部简体 / 繁体字幕" TextWrapping="Wrap" />
-                <ListBox x:Name="TgGroups" Grid.Row="3" MinHeight="160" SelectionMode="Single" />
+                <ListBox x:Name="TgGroups" Grid.Row="3" MinHeight="160" SelectionMode="Single" SelectionChanged="TgGroupSelected" />
                 <Grid Grid.Row="4" ColumnDefinitions="Auto,8,*,8,Auto">
                   <ComboBox x:Name="TgLang" SelectedIndex="0" MinWidth="96">
                     <ComboBoxItem Content="简体" />

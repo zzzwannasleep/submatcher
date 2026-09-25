@@ -152,7 +152,10 @@ try
             if (sub == "search")
             {
                 for (int i = 0; i < groups.Count; i++)
-                    Console.WriteLine($"{i + 1,3}. {groups[i].Title}  [{(groups[i].Platform is { Length: > 0 } pl ? pl : "未知平台")}]  简 {groups[i].Chs.Count} / 繁 {groups[i].Cht.Count}{(groups[i].Other.Count > 0 ? $" / 其他 {groups[i].Other.Count}" : "")}");
+                {
+                        Console.WriteLine($"{i + 1,3}. {groups[i].Title}  [{(groups[i].Platform is { Length: > 0 } pl ? pl : "未知平台")}]  简 {groups[i].Chs.Count} / 繁 {groups[i].Cht.Count}{(groups[i].Other.Count > 0 ? $" / 其他 {groups[i].Other.Count}" : "")}");
+                    if (Flag("files")) foreach (var f in (List<TgFile>)[.. groups[i].Chs, .. groups[i].Cht, .. groups[i].Other]) Console.WriteLine($"       {f.Name}");
+                }
                 return 0;
             }
             if (sub != "download") { Usage(); return 2; }
@@ -277,7 +280,7 @@ static void Need(List<string> pos, int n, string usage)
 
 static (List<string>, Dictionary<string, string>) ParseArgs(string[] a)
 {
-    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run"];
+    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run", "files"];
     var pos = new List<string>();
     var opt = new Dictionary<string, string>();
     for (int i = 0; i < a.Length; i++)
@@ -322,7 +325,7 @@ static void Usage() => Console.WriteLine("""
         简繁转换（繁化姬 https://zhconvert.org）：sc 简体化 / tc 繁体化 / cn 中国化 / tw 台湾化 / hk 香港化
         输出文件名里的语言标记会跟着换（CHS→CHT、.sc→.tc），没有标记就加上
     submatcher-cli tg login [--phone +86…] | logout      Telegram 扫码或手机号登录 / 退出（会话存在程序目录）
-    submatcher-cli tg search <关键词> [--channel anime_chinese_subtitles] [--proxy socks5://主机:端口]
+    submatcher-cli tg search <关键词> [--files] [--channel anime_chinese_subtitles] [--proxy socks5://主机:端口]
         在字幕频道里检索，按「片名 + 平台」合并，列出简/繁数量（不分集）
     submatcher-cli tg download <关键词> [--pick N] [--lang sc|tc|all] [-o 目录]
         下载第 N 组的简体/繁体/全部字幕
