@@ -124,7 +124,7 @@ public class GuiTests
         Assert.Equal(1, Settled(content), 3);
 
         // dropdown list on the tools page
-        w.FindControl<TabControl>("Tabs")!.SelectedIndex = 2;
+        w.FindControl<TabControl>("Tabs")!.SelectedItem = w.FindControl<TabItem>("TabTools");
         var page = (Visual)((TabItem)w.FindControl<TabControl>("Tabs")!.SelectedItem!).Content!;
         Assert.InRange(JustStarted(page), 0, 0.9); // tab switch fades in too
         Assert.Equal(1, Settled(page), 3);
@@ -167,7 +167,7 @@ public class GuiTests
         Click(tour2, "上一步");
         Assert.Equal(1, tour2.Index);
         while (tour2.IsOpen) Click(tour2, tour2.GetVisualDescendants().OfType<Button>().Any(b => b.Content as string == "完成") ? "完成" : "下一步");
-        Assert.Equal(8, tour2.Index);
+        Assert.Equal(9, tour2.Index);
     }
 
     /// <summary>Renders the main screens to PNG when SUBMATCHER_SHOTS is set — a visual check without touching a real desktop.</summary>
@@ -195,7 +195,7 @@ public class GuiTests
         Click(w, "深色模式");
         Thread.Sleep(300); Pump();
         Save(w, dir, "5-results-dark.png");
-        w.FindControl<TabControl>("Tabs")!.SelectedIndex = 2;
+        w.FindControl<TabControl>("Tabs")!.SelectedItem = w.FindControl<TabItem>("TabTools");
         Pump();
         Save(w, dir, "6-tools-dark.png");
         if (Environment.GetEnvironmentVariable("SUBMATCHER_SUBSET_SAMPLE") is { Length: > 0 } sample)
@@ -216,6 +216,38 @@ public class GuiTests
         w.Height = 700;
         Thread.Sleep(400); Pump(); Thread.Sleep(300); Pump();
         Save(w, dir, "7-advanced.png");
+    }
+
+
+    [AvaloniaFact]
+    public void RenamePageMatchesDroppedFolders()
+    {
+        var w = NewWindow(tourDone: true);
+        var dir = TempDir();
+        File.WriteAllText(Path.Combine(dir, "[BD] Show - 01.mkv"), "");
+        File.WriteAllText(Path.Combine(dir, "CHS_Show_第1集_Viu.srt"), "sc");
+        w.FindControl<TabControl>("Tabs")!.SelectedItem = w.FindControl<TabItem>("TabSubs");
+        Pump();
+        w.AcceptPaths([dir]);
+        Assert.Equal(dir, w.FindControl<TextBox>("RenVideos")!.Text);
+        Click(w, "预览");
+        Assert.Contains("[BD] Show - 01.sc.srt", w.FindControl<TextBox>("RenLog")!.Text);
+        Click(w, "改名");
+        Assert.Equal("sc", File.ReadAllText(Path.Combine(dir, "[BD] Show - 01.sc.srt")));
+        Assert.True(File.Exists(Path.Combine(dir, "字幕备份", "CHS_Show_第1集_Viu.srt")));
+
+        if (Environment.GetEnvironmentVariable("SUBMATCHER_SHOTS") is { } shots)
+        {
+            w.FindControl<ListBox>("TgGroups")!.ItemsSource = new[]
+            {
+                "遭到流放的转生重骑士凭借游戏知识大开无双  ·  Viu    简 13 / 繁 13",
+                "遭到流放的轉生重騎士憑藉遊戲知識大開無雙  ·  iQIYI    简 13 / 繁 13",
+                "遭到流放的转生重骑士凭借游戏知识大开无双  ·  meWATCH    简 13 / 繁 13",
+            };
+            w.FindControl<ListBox>("TgGroups")!.SelectedIndex = 0;
+            Pump();
+            Save(w, shots, "subs-page.png");
+        }
     }
 
     static void Save(Window w, string dir, string name) => w.CaptureRenderedFrame()?.Save(Path.Combine(dir, name));

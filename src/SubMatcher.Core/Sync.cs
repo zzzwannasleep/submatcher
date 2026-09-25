@@ -212,7 +212,7 @@ public static class Sync
 
     public static string? EpisodeOf(string path)
     {
-        var name = Regex.Replace(Path.GetFileNameWithoutExtension(path), @"\d{3,4}[pPiI]|[xXhH]\.?26[45]|\d+bit|\d{3,4}x\d{3,4}", " ");
+        var name = Regex.Replace(Path.GetFileNameWithoutExtension(path).Replace('_', ' '), @"\d{3,4}[pPiI]|[xXhH]\.?26[45]|\d+bit|\d{3,4}x\d{3,4}", " ");
         var ms = Episode.Matches(name);
         return ms.Count == 0 ? null : double.Parse(ms[^1].Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture).ToString(System.Globalization.CultureInfo.InvariantCulture);
     }

@@ -61,6 +61,8 @@ jobs:
         shell: bash
     env:
       RID: ${{ matrix.rid }}
+      TG_API_ID: ${{ secrets.TG_API_ID }}
+      TG_API_HASH: ${{ secrets.TG_API_HASH }}
       TAG: ${{ needs.version.outputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:

@@ -33,7 +33,9 @@ macOS 第一次打开被拦的话，对解压出来的文件夹执行 `xattr -cr
 
 把源视频、源字幕、目标视频拖进窗口，点「开始调轴」。字幕输出到目标视频旁边，没把握的行会标出来，可以对着画面逐行微调。重新作画或者裁切过的镜头找不到对应画面，也会标出来。
 
-整季批量处理、手动平移、转帧率、转编码，还有字体子集化（基于 [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss)），在另外两个标签页里。
+整季批量处理、手动平移、转帧率、转编码、简繁转换（[繁化姬](https://zhconvert.org)），还有字体子集化（基于 [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss)），在另外几个标签页里。
+
+「下载与改名」页：从 Telegram 字幕频道 [@anime_chinese_subtitles](https://t.me/anime_chinese_subtitles) 按片名检索，按平台和简繁合并，选一个平台就把它的全部简体或繁体字幕下下来（手机扫码登录一次）。调完轴、子集化完，一键把字幕改成视频名（参考 [SubRenamer](https://github.com/qwqcode/SubRenamer)），播放器直接加载。
 
 命令行：
 
@@ -53,4 +55,4 @@ dotnet test
 
 ## 致谢
 
-[Sushi](https://github.com/tp7/Sushi) · [ACGRIP BBS](https://bbs.acgrip.com/thread-1936-1-1.html) · [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss) · [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) · [FFmpeg](https://ffmpeg.org)
+[Sushi](https://github.com/tp7/Sushi) · [ACGRIP BBS](https://bbs.acgrip.com/thread-1936-1-1.html) · [FontInAss](https://github.com/Yuri-NagaSaki/FontInAss) · [SubRenamer](https://github.com/qwqcode/SubRenamer) · [版權中文字幕](https://t.me/anime_chinese_subtitles) · [繁化姬](https://zhconvert.org) · [WTelegramClient](https://github.com/wiz0u/WTelegramClient) · [Semi.Avalonia](https://github.com/irihitech/Semi.Avalonia) · [FFmpeg](https://ffmpeg.org)

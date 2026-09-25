@@ -154,6 +154,82 @@ submatcher-cli subset "[BD] 01.tc.ass" --alias-salt TC
 
 公共服务器目前不支持 SRT，要先转成 ASS。
 
+## zh
+
+```sh
+submatcher-cli zh <字幕或目录>... --to sc|tc|cn|tw|hk [-r] [--out-dir 目录 | --in-place]
+```
+
+简繁转换，由 [繁化姬](https://zhconvert.org) 提供。整份字幕交给它：只转对白，样式、特效标签、字体名都不动。
+
+| `--to` | 效果 |
+|---|---|
+| `sc` | 简体化 |
+| `tc` | 繁体化 |
+| `cn` | 中国化：简体，并换成大陆用语（軟體 → 软件） |
+| `tw` | 台湾化：繁体，并换成台湾用语（软件 → 軟體） |
+| `hk` | 香港化 |
+
+输出默认放在原文件旁边，文件名里的语言标记会跟着换：`CHS_xx.srt` → `CHT_xx.srt`，`xx.sc.ass` → `xx.tc.ass`；没有标记就加上 `.sc` / `.tc`。`--in-place` 覆盖原文件。输入可以是任意编码，输出 UTF-8 BOM。
+
+繁化姬会在字幕开头加一行「Processed by 繁化姬」的注释（SRT 里是一条 0 时长、不显示的字幕），这是它免费使用的条件，别删。
+
+## tg
+
+从 Telegram 字幕频道检索、下载字幕。网页版频道搜不了中文，也没有下载链接，所以要登录一次：手机 Telegram → 设置 → 设备 → 连接桌面设备，扫终端里的二维码。登录状态存在程序目录的 `telegram.session`，删掉它（或 `tg logout`）就退出了。
+
+```sh
+submatcher-cli tg login
+submatcher-cli tg search 遭到流放
+submatcher-cli tg download 遭到流放 --pick 1 --lang sc -o ./subs
+```
+
+`search` 把结果按「片名 + 平台」合并，不分集，列出每组的简体 / 繁体数量：
+
+```
+  1. 遭到流放的转生重骑士凭借游戏知识大开无双  [Viu]  简 13 / 繁 13
+  2. 遭到流放的轉生重騎士憑藉遊戲知識大開無雙  [iQIYI]  简 13 / 繁 13
+```
+
+平台不同，片名可能一个用简体一个用繁体，关键词两种都可以试试。
+
+| 参数 | 说明 |
+|---|---|
+| `--channel <名字>` | 频道，默认 `anime_chinese_subtitles`；合辑 / 旧番 `anime_chinese_subtitles_old`，非日本动画 `chinese_subtitles` |
+| `--pick N` | 下载第 N 组（只有一组时可以不写） |
+| `--lang sc\|tc\|all` | 简体 / 繁体 / 全部，默认全部 |
+| `-o <目录>` | 保存位置，默认当前目录下的 `片名 [平台]/` |
+| `--proxy <地址>` | 连不上时用：`socks5://主机:端口`，或 MTProxy 链接 |
+
+同名文件频道里重发过的，只下最新那份。
+
+## rename
+
+```sh
+submatcher-cli rename <视频目录> [字幕目录]... [--sc sc] [--tc tc] [--copy] [--no-backup] [--dry-run]
+```
+
+按集数把字幕改成对应视频的名字（`视频名.sc.ass` / `视频名.tc.ass`），播放器会自动加载。认得出 `CHS/CHT`、`简/繁`、`sc/tc`、`chs_jp`、`zh-Hans/zh-Hant` 等标记；认不出语言的不加后缀。
+
+每集每种语言只取一个：`*.subset.*`（子集化过的）优先，其次最新的。所以调轴 → 子集化 → `rename`，最后留在视频旁边的就是嵌好字体的那份。
+
+| 参数 | 说明 |
+|---|---|
+| `--sc` / `--tc` | 简体 / 繁体后缀，默认 `sc` / `tc`，给空字符串就不加 |
+| `--copy` | 复制而不是改名，原文件留在原地 |
+| `--no-backup` | 不备份。默认被改名或被覆盖的字幕先复制到旁边的 `字幕备份/` |
+| `--dry-run` | 只打印对应关系，不动文件 |
+
+从频道下载的字幕调轴的完整流程：
+
+```sh
+submatcher-cli tg download 片名 --pick 1 --lang sc -o ./web      # 下载
+submatcher-cli rename ./web                                       # 先对上 WEB 视频的名字
+submatcher-cli batch ./web ./bd                                   # 调轴，输出已经是 BD 视频名.sc.srt
+submatcher-cli subset ./bd                                        # 子集化（ASS），生成 xx.subset.ass
+submatcher-cli rename ./bd                                        # 子集化后的那份改回 BD 视频名
+```
+
 ## clear-cache
 
 ```sh

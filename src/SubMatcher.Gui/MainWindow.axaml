@@ -225,6 +225,96 @@
           </Grid>
         </TabItem>
 
+        <!-- ============ 字幕下载与改名 ============ -->
+        <TabItem x:Name="TabSubs" Header="下载与改名">
+          <Grid ColumnDefinitions="*,16,*" Margin="0,12,0,0">
+            <Border x:Name="TgCard" Classes="card">
+              <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" RowSpacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="2">
+                    <TextBlock Classes="h" Text="Telegram 字幕频道" />
+                    <TextBlock x:Name="TgStatus" Classes="hint" Text="未登录（检索和下载需要扫码登录一次）" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <Button x:Name="TgLoginBtn" Grid.Column="1" Theme="{DynamicResource OutlineButton}" Content="扫码登录" Click="TgLogin" VerticalAlignment="Center" />
+                </Grid>
+                <Grid Grid.Row="1" ColumnDefinitions="220,8,*,8,Auto">
+                  <ComboBox x:Name="TgChannel" IsEditable="True" HorizontalAlignment="Stretch" ItemsSource="{x:Static local:MainWindow.Channels}"
+                            ToolTip.Tip="新番：anime_chinese_subtitles；合辑/旧番：anime_chinese_subtitles_old；非日本动画：chinese_subtitles" />
+                  <TextBox x:Name="TgQuery" Grid.Column="2" Watermark="片名关键词（简繁体都可以试试）" KeyDown="TgQueryKey" />
+                  <Button x:Name="TgSearchBtn" Grid.Column="4" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="检索" Click="TgSearch" MinWidth="72" />
+                </Grid>
+                <TextBlock Grid.Row="2" Classes="hint" Text="按「片名 + 平台」合并，不分集；选一组下载该平台的全部简体 / 繁体字幕" TextWrapping="Wrap" />
+                <ListBox x:Name="TgGroups" Grid.Row="3" MinHeight="160" SelectionMode="Single" />
+                <Grid Grid.Row="4" ColumnDefinitions="Auto,8,*,8,Auto">
+                  <ComboBox x:Name="TgLang" SelectedIndex="0" MinWidth="96">
+                    <ComboBoxItem Content="简体" />
+                    <ComboBoxItem Content="繁体" />
+                    <ComboBoxItem Content="简繁都要" />
+                  </ComboBox>
+                  <TextBox x:Name="TgOut" Grid.Column="2" Watermark="保存到（留空 = 程序目录/字幕下载/片名 [平台]）">
+                    <TextBox.InnerRightContent>
+                      <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="TgOut" Click="BrowseFolder" Padding="8,0" />
+                    </TextBox.InnerRightContent>
+                  </TextBox>
+                  <Button x:Name="TgDownloadBtn" Grid.Column="4" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="下载" Click="TgDownload" MinWidth="72" />
+                </Grid>
+                <StackPanel Grid.Row="5" Spacing="6">
+                  <ProgressBar x:Name="TgProgress" Minimum="0" Maximum="1" IsVisible="False" />
+                  <TextBlock x:Name="TgLog" Classes="hint" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+
+            <Border x:Name="RenameCard" Grid.Column="2" Classes="card">
+              <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" RowSpacing="10">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="h" Text="字幕自动改名" />
+                  <TextBlock Classes="hint" TextWrapping="Wrap"
+                             Text="按集数把字幕改成视频的名字，播放器就会自动加载。每集每种语言选一个：子集化过的优先，其次最新的。" />
+                </StackPanel>
+                <StackPanel Grid.Row="1">
+                  <TextBlock Classes="field" Text="视频文件夹" />
+                  <TextBox x:Name="RenVideos" Watermark="拖入或浏览…">
+                    <TextBox.InnerRightContent>
+                      <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="RenVideos" Click="BrowseFolder" Padding="8,0" />
+                    </TextBox.InnerRightContent>
+                  </TextBox>
+                </StackPanel>
+                <StackPanel Grid.Row="2">
+                  <TextBlock Classes="field" Text="字幕文件夹（留空 = 视频文件夹）" />
+                  <TextBox x:Name="RenSubs" Watermark="拖入或浏览…">
+                    <TextBox.InnerRightContent>
+                      <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="RenSubs" Click="BrowseFolder" Padding="8,0" />
+                    </TextBox.InnerRightContent>
+                  </TextBox>
+                </StackPanel>
+                <Grid Grid.Row="3" ColumnDefinitions="*,8,*">
+                  <StackPanel ToolTip.Tip="视频名.sc.ass；留空 = 不加后缀">
+                    <TextBlock Classes="field" Text="简体后缀" />
+                    <TextBox x:Name="RenSc" Text="sc" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2">
+                    <TextBlock Classes="field" Text="繁体后缀" />
+                    <TextBox x:Name="RenTc" Text="tc" />
+                  </StackPanel>
+                </Grid>
+                <Grid Grid.Row="4" ColumnDefinitions="*,Auto,8,Auto">
+                  <WrapPanel VerticalAlignment="Center">
+                    <ToggleSwitch x:Name="RenCopy" Content="复制（保留原文件）" Margin="0,0,16,4" />
+                    <ToggleSwitch x:Name="RenBackup" Content="备份原字幕" IsChecked="True" Margin="0,0,16,4" ToolTip.Tip="改名或被覆盖的字幕先复制到「字幕备份」文件夹" />
+                  </WrapPanel>
+                  <Button Grid.Column="1" Content="预览" Click="RenamePreview" VerticalAlignment="Center" />
+                  <Button x:Name="RenameBtn" Grid.Column="3" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="改名" Click="RenameRun" VerticalAlignment="Center" />
+                </Grid>
+                <Border Grid.Row="5" Padding="4" BorderThickness="1" BorderBrush="{DynamicResource SemiColorBorder}" CornerRadius="6">
+                  <TextBox x:Name="RenLog" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" BorderThickness="0" Background="Transparent"
+                           FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12" VerticalContentAlignment="Top" Watermark="预览：原字幕 → 新名字" />
+                </Border>
+              </Grid>
+            </Border>
+          </Grid>
+        </TabItem>
+
         <!-- ============ 工具 ============ -->
         <TabItem x:Name="TabTools" Header="工具">
           <ScrollViewer Margin="0,12,0,0">
@@ -294,6 +384,36 @@
                 </Border>
               </Grid>
 
+              <Border x:Name="ZhCard" Classes="card">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="h" Text="简繁转换" />
+                    <HyperlinkButton Grid.Column="1" Content="由繁化姬 zhconvert.org 提供" NavigateUri="https://zhconvert.org" Padding="0" FontSize="12" />
+                  </Grid>
+                  <TextBlock Classes="hint" TextWrapping="Wrap"
+                             Text="整份字幕交给繁化姬转换：只转对白，样式、特效标签、字体名不动。「中国化 / 台湾化」连用语一起换（软件 ↔ 軟體）。输出文件名里的 CHS/CHT、sc/tc 会跟着换，原文件保留。" />
+                  <StackPanel>
+                    <TextBlock Classes="field" Text="字幕或文件夹（留空 = 上面的字幕文件）" />
+                    <TextBox x:Name="ZhInput" Watermark="拖入文件夹或浏览…">
+                      <TextBox.InnerRightContent>
+                        <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Tag="ZhInput" Click="BrowseFolder" Padding="8,0" />
+                      </TextBox.InnerRightContent>
+                    </TextBox>
+                  </StackPanel>
+                  <Grid ColumnDefinitions="Auto,12,*,Auto">
+                    <ComboBox x:Name="ZhMode" MinWidth="220" SelectedIndex="1" ItemsSource="{x:Static local:MainWindow.ZhModes}" />
+                    <WrapPanel Grid.Column="2" VerticalAlignment="Center">
+                      <ToggleSwitch x:Name="ZhRecursive" Content="包含子文件夹" Margin="0,0,16,0" />
+                      <ToggleSwitch x:Name="ZhInPlace" Content="覆盖原文件" />
+                    </WrapPanel>
+                    <Button x:Name="ZhBtn" Grid.Column="3" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="转换"
+                            Click="ToolZh" VerticalAlignment="Center" MinWidth="96" HorizontalContentAlignment="Center" />
+                  </Grid>
+                  <ProgressBar x:Name="ZhProgress" Minimum="0" Maximum="1" IsVisible="False" />
+                  <SelectableTextBlock x:Name="ZhLog" FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
+              </Border>
+
               <Border x:Name="SubsetCard" Classes="card">
                 <StackPanel Spacing="10">
                   <TextBlock Classes="h" Text="字体子集化" />
@@ -354,6 +474,14 @@
                   <Button x:Name="UpdateBtn" Grid.Column="1" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="检查更新"
                           Click="CheckUpdate" VerticalAlignment="Center" Margin="16,0,0,0" />
                 </Grid>
+              </Border>
+
+              <Border Classes="card">
+                <StackPanel Spacing="4">
+                  <TextBlock Classes="h" Text="Telegram 代理" />
+                  <TextBlock Classes="hint" Text="连不上 Telegram 时填本地代理，如 socks5://主机:端口（Clash / v2rayN 的混合端口），或 MTProxy 链接。留空 = 直连" TextWrapping="Wrap" />
+                  <TextBox x:Name="TgProxy" Watermark="socks5://主机:端口" Margin="0,4,0,0" />
+                </StackPanel>
               </Border>
 
               <Border Classes="card">

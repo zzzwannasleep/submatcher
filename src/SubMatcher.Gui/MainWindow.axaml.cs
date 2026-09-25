@@ -38,6 +38,7 @@ public sealed class Row(EventResult r, double fps) : INotifyPropertyChanged
 public partial class MainWindow : Window
 {
     public static string[] CommonFps { get; } = ["23.976", "24", "25", "29.97", "30", "50", "59.94", "60"];
+    public static string[] Channels { get; } = [TgSubs.DefaultChannel, "anime_chinese_subtitles_old", "chinese_subtitles"];
 
     static readonly FilePickerFileType VideoType = new("视频") { Patterns = Sync.VideoExts.Select(e => "*" + e).ToArray() };
     static readonly FilePickerFileType SubType = new("字幕") { Patterns = Sync.SubExts.Select(e => "*" + e).ToArray() };
@@ -64,6 +65,7 @@ public partial class MainWindow : Window
         {
             if (e.Source != Tabs) return; // SelectionChanged also bubbles up from the results grid
             if (Tabs.SelectedItem == TabSettings) UpdateCacheInfo();
+            if (Tabs.SelectedItem == TabSubs && _tg == null && File.Exists(TgClient.SessionPath)) _ = TgEnsure(false);
             // TabControl has no page transition in Avalonia 11.3: fade the new page in like an expander.
             if ((Tabs.SelectedItem as TabItem)?.Content is Visual page) _ = new DropDownReveal { Duration = TimeSpan.FromMilliseconds(180) }.Start(null, page, true, default);
         };
@@ -71,6 +73,8 @@ public partial class MainWindow : Window
         Updater.Cleanup();
         UpdateInfo.Text = $"当前 v{Updater.Current.ToString(3)}";
         SubsetServer.Text = _settings.FontServer;
+        TgChannel.Text = _settings.TgChannel;
+        TgProxy.Text = _settings.TgProxy;
         SubsetApiKey.Text = _settings.FontApiKey;
         AutoSubset.IsChecked = _settings.AutoSubset;
         ApplyTheme(_settings.Theme);
@@ -121,8 +125,10 @@ public partial class MainWindow : Window
                 "选中一行，这里并排显示新旧两边同一时刻的画面。对不上就 ±1 帧 / ±0.5 秒 微调，然后保存。", OnResults),
             new(() => TabBatch, "批量",
                 "整季处理：选两个文件夹，按集数自动配对，外挂字幕和内封字幕都支持。", HideEmptyResults),
+            new(() => TabSubs, "下载与改名",
+                "从 Telegram 字幕频道检索并下载某个平台的全部简体 / 繁体字幕（扫码登录一次）；调完轴、子集化完，一键把字幕改成视频名，播放器自动加载。"),
             new(() => TabTools, "工具",
-                "手动平移（可只平移某个区间）、帧率转换、编码转 UTF-8，还有字体子集化：把用到的字精简成小字体嵌进字幕。"),
+                "手动平移（可只平移某个区间）、帧率转换、编码转 UTF-8、简繁转换（繁化姬），还有字体子集化：把用到的字精简成小字体嵌进字幕。"),
             new(() => TourBtn, "随时重看",
                 "以后想再看一遍，点这里就行。"),
         ]);
@@ -141,12 +147,16 @@ public partial class MainWindow : Window
 
     void OnDrop(object? sender, DragEventArgs e) => AcceptPaths(e.DataTransfer.TryGetFiles()?.Select(f => f.TryGetLocalPath()).OfType<string>().ToList() ?? []);
 
-    void AcceptPaths(IEnumerable<string> paths)
+    internal void AcceptPaths(IEnumerable<string> paths)
     {
         foreach (var p in paths)
         {
-            switch (Tabs.SelectedIndex)
+            var tab = Tabs.SelectedItem;
+            switch (tab == TabSync ? 0 : tab == TabBatch ? 1 : tab == TabTools ? 2 : tab == TabSubs ? 3 : -1)
             {
+                case 3 when Directory.Exists(p):
+                    (string.IsNullOrWhiteSpace(RenVideos.Text) ? RenVideos : RenSubs).Text = p;
+                    break;
                 case 1 when Directory.Exists(p):
                     (string.IsNullOrWhiteSpace(BatchSrc.Text) ? BatchSrc : BatchDst).Text = p;
                     break;
@@ -154,7 +164,7 @@ public partial class MainWindow : Window
                     ToolSub.Text = p;
                     break;
                 case 2 when Directory.Exists(p):
-                    SubsetInput.Text = p;
+                    SubsetInput.Text = ZhInput.Text = p;
                     break;
                 case 0 when Sync.IsSub(p):
                     SrcSub.Text = p;

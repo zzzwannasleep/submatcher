@@ -11,6 +11,8 @@ public sealed class AppSettings
     public string FontServer { get; set; } = "https://font.anibt.net";
     public string FontApiKey { get; set; } = "";
     public bool AutoSubset { get; set; }
+    public string TgChannel { get; set; } = SubMatcher.Core.TgSubs.DefaultChannel;
+    public string TgProxy { get; set; } = "";
 
     internal static string FilePath = Path.Combine(AppContext.BaseDirectory, "settings.json");
 

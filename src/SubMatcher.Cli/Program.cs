@@ -92,6 +92,94 @@ try
             return bad == 0 ? 0 : 1;
         }
 
+        case "zh":
+        {
+            Need(pos, 1, "zh <字幕或目录>... --to sc|tc|cn|tw|hk");
+            var mode = ZhConvert.Mode(Req("to"));
+            var files = FontSubset.Collect(pos, Flag("r") || Flag("recursive"));
+            if (files.Count == 0) { Console.Error.WriteLine("没有找到 .ass / .ssa / .srt 字幕。"); return 1; }
+            Console.Error.WriteLine($"{files.Count} 个字幕，{mode.Label}（由繁化姬 {ZhConvert.Home} 提供）");
+            int bad = 0;
+            // 2 at a time: a free public service.
+            await Parallel.ForEachAsync(files, new ParallelOptions { MaxDegreeOfParallelism = 2, CancellationToken = cts.Token }, async (f, ct) =>
+            {
+                string? output = Flag("in-place") ? f : Get("out-dir") is { } d ? ZhConvert.OutputFor(f, mode.Tag, d) : null;
+                try
+                {
+                    var o = await ZhConvert.ConvertFile(f, mode.Key, output, ct);
+                    lock (files) Console.WriteLine($"✓ {Path.GetFileName(f)} → {o}");
+                }
+                catch (Exception e) when (e is HttpRequestException or InvalidOperationException or IOException or TaskCanceledException)
+                {
+                    lock (files) { bad++; Console.WriteLine($"✗ {Path.GetFileName(f)}  {e.Message}"); }
+                }
+            });
+            Console.WriteLine($"完成：成功 {files.Count - bad}，失败 {bad}");
+            return bad == 0 ? 0 : 1;
+        }
+
+        case "tg":
+        {
+            var sub = pos.Count > 0 ? pos[0] : "";
+            if (sub == "logout") { TgClient.Logout(); Console.WriteLine("已退出 Telegram 登录"); return 0; }
+            using var tg = new TgClient(Get("proxy"), () => { Console.Write("两步验证密码: "); return Console.ReadLine(); });
+            if (!await tg.Resume())
+            {
+                if (Get("phone") is { } phone)
+                {
+                    try
+                    {
+                        for (var need = await tg.LoginPhone(phone); need != null;)
+                        {
+                            Console.Error.Write(need switch { "verification_code" => "验证码（发到你的 Telegram 或短信）: ", "password" => "两步验证密码: ", _ => need + ": " });
+                            need = await tg.LoginPhone(Console.ReadLine() ?? "");
+                        }
+                    }
+                    catch (TL.RpcException e) { throw new InvalidOperationException(TgClient.Explain(e)); }
+                }
+                else
+                {
+                    Console.Error.WriteLine("用手机 Telegram 扫码登录：设置 → 设备 → 连接桌面设备（或者 tg login --phone +86…）");
+                    await tg.LoginQr(PrintQr, cts.Token);
+                }
+            }
+            Console.Error.WriteLine($"已登录 {tg.UserName}");
+            if (sub == "login") return 0;
+            Need(pos, 2, "tg search|download <关键词>");
+            var channel = Get("channel") ?? TgSubs.DefaultChannel;
+            var groups = TgSubs.Group(await tg.Search(channel, string.Join(' ', pos[1..]), null, cts.Token));
+            if (groups.Count == 0) { Console.Error.WriteLine("没找到，换个关键词（简繁体都试试）"); return 1; }
+            if (sub == "search")
+            {
+                for (int i = 0; i < groups.Count; i++)
+                    Console.WriteLine($"{i + 1,3}. {groups[i].Title}  [{(groups[i].Platform is { Length: > 0 } pl ? pl : "未知平台")}]  简 {groups[i].Chs.Count} / 繁 {groups[i].Cht.Count}{(groups[i].Other.Count > 0 ? $" / 其他 {groups[i].Other.Count}" : "")}");
+                return 0;
+            }
+            if (sub != "download") { Usage(); return 2; }
+            int pick = (int)Num("pick", groups.Count == 1 ? 1 : 0);
+            if (pick < 1 || pick > groups.Count) throw new ArgumentException("有多组结果，用 --pick N 选一组（序号见 tg search）");
+            var g = groups[pick - 1];
+            List<TgFile> files = (Get("lang") ?? "all") switch { "sc" => g.Chs, "tc" => g.Cht, _ => [.. g.Chs, .. g.Cht, .. g.Other] };
+            var dir = Get("o") ?? Path.Combine(Environment.CurrentDirectory, $"{g.Title} [{g.Platform}]");
+            var got = await tg.Download(channel, files, dir, new Progress<(int Done, int Total)>(p => Console.Error.Write($"\r下载 {p.Done}/{p.Total}   ")), cts.Token);
+            Console.Error.WriteLine();
+            Console.WriteLine($"{got.Count} 个字幕 → {dir}");
+            return 0;
+        }
+
+        case "rename":
+        {
+            Need(pos, 1, "rename <视频目录> [字幕目录]...");
+            var (videos, subs) = Renamer.Collect(pos);
+            var plan = Renamer.Plan(videos, subs, Get("sc") ?? "sc", Get("tc") ?? "tc");
+            foreach (var p in plan) Console.WriteLine(p.NoOp ? $"  = {Path.GetFileName(p.Target)}" : $"  {Path.GetFileName(p.Sub)}\n    → {Path.GetFileName(p.Target)}");
+            if (plan.Count == 0) { Console.Error.WriteLine($"{videos.Count} 个视频、{subs.Count} 个字幕，没有能对上集数的"); return 1; }
+            if (Flag("dry-run")) return 0;
+            int n = Renamer.Apply(plan, Flag("copy"), !Flag("no-backup"));
+            Console.WriteLine($"已{(Flag("copy") ? "复制" : "重命名")} {n} 个{(Flag("no-backup") || Flag("copy") || n == 0 ? "" : "，原字幕备份在「字幕备份」文件夹")}");
+            return 0;
+        }
+
         case "clear-cache":
             if (Directory.Exists(Fingerprint.CacheDir)) Directory.Delete(Fingerprint.CacheDir, true);
             Console.WriteLine("缓存已清空");
@@ -103,9 +191,9 @@ try
     }
 }
 catch (OperationCanceledException) { Console.Error.WriteLine("\n已取消"); return 130; }
-catch (Exception e) when (e is InvalidOperationException or IOException or FormatException or ArgumentException or UnauthorizedAccessException)
+catch (Exception e) when (e is InvalidOperationException or IOException or FormatException or ArgumentException or UnauthorizedAccessException or TL.RpcException)
 {
-    Console.Error.WriteLine($"错误：{e.Message}");
+    Console.Error.WriteLine($"错误：{TgClient.Explain(e)}");
     return 1;
 }
 
@@ -146,6 +234,23 @@ async Task<int> RunSync(string src, string? sub, string dst, string? output)
     return 0;
 }
 
+void PrintQr(string url)
+{
+    var m = TgSubs.QrMatrix(url);
+    int n = m.Length;
+    bool At(int y, int x) => y >= 0 && y < n && x >= 0 && x < n && m[y][x];
+    var sb = new StringBuilder("\n");
+    // Two rows per line with half blocks; light modules as blocks so it scans on dark terminals too.
+    for (int y = 0; y < n; y += 2)
+    {
+        sb.Append("  ");
+        for (int x = 0; x < n; x++)
+            sb.Append((!At(y, x), !At(y + 1, x)) switch { (true, true) => '█', (true, false) => '▀', (false, true) => '▄', _ => ' ' });
+        sb.Append('\n');
+    }
+    Console.Error.WriteLine(sb.ToString() + "（二维码约 30 秒刷新一次）");
+}
+
 SubsetOptions SubsetOpts()
 {
     var so = new SubsetOptions { Strict = Flag("strict"), Clean = Flag("clean"), AliasSalt = Get("alias-salt"), ApiKey = Get("api-key") };
@@ -172,7 +277,7 @@ static void Need(List<string> pos, int n, string usage)
 
 static (List<string>, Dictionary<string, string>) ParseArgs(string[] a)
 {
-    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean"];
+    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run"];
     var pos = new List<string>();
     var opt = new Dictionary<string, string>();
     for (int i = 0; i < a.Length; i++)
@@ -213,6 +318,16 @@ static void Usage() => Console.WriteLine("""
     submatcher-cli subset <字幕或目录>... [-r] [--out-dir 目录 | --in-place]
         [--server https://font.anibt.net] [--api-key KEY] [--strict] [--clean] [--alias-salt SC]
         字体子集化：上传到 FontInAss 服务器，嵌入只含用到的字符的字体。默认输出 xx.subset.ass
+    submatcher-cli zh <字幕或目录>... --to sc|tc|cn|tw|hk [-r] [--out-dir 目录 | --in-place]
+        简繁转换（繁化姬 https://zhconvert.org）：sc 简体化 / tc 繁体化 / cn 中国化 / tw 台湾化 / hk 香港化
+        输出文件名里的语言标记会跟着换（CHS→CHT、.sc→.tc），没有标记就加上
+    submatcher-cli tg login [--phone +86…] | logout      Telegram 扫码或手机号登录 / 退出（会话存在程序目录）
+    submatcher-cli tg search <关键词> [--channel anime_chinese_subtitles] [--proxy socks5://主机:端口]
+        在字幕频道里检索，按「片名 + 平台」合并，列出简/繁数量（不分集）
+    submatcher-cli tg download <关键词> [--pick N] [--lang sc|tc|all] [-o 目录]
+        下载第 N 组的简体/繁体/全部字幕
+    submatcher-cli rename <视频目录> [字幕目录]... [--sc sc] [--tc tc] [--copy] [--no-backup] [--dry-run]
+        按集数把字幕改成视频名（xx.sc.ass / xx.tc.ass），子集化过的优先；被改名/覆盖的原字幕备份到「字幕备份」
     submatcher-cli clear-cache
     """);
 

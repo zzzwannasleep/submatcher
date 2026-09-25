@@ -7,8 +7,19 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <!-- Telegram app credentials come from CI secrets at build time, never from the repo -->
+  <ItemGroup Condition="'$(TgApiId)' != ''">
+    <AssemblyMetadata Include="TgApiId" Value="$(TgApiId)" />
+    <AssemblyMetadata Include="TgApiHash" Value="$(TgApiHash)" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="SubMatcher.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="WTelegramClient" Version="4.4.8" />
   </ItemGroup>
 
 </Project>
