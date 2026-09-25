@@ -255,7 +255,7 @@ async Task<int> RunSync(string src, string? sub, string dst, string? output)
     {
         WindowSeconds = Num("window", 10), AnalysisFps = Num("fps", 0), MaxCost = Num("max-cost", 0.4), WarnCost = Num("warn-cost", 0.2),
         MinLineSeconds = Num("min-line", 1.5), SnapToCuts = !Flag("no-snap"), HwAccel = Flag("hwaccel"), UseCache = !Flag("no-cache"),
-        AutoCrop = !Flag("no-crop"),
+        AutoCrop = !Flag("no-crop"), UseAudio = !Flag("no-audio"),
         SubtitleStream = (int)Num("stream", 0),
     };
     string lastStage = "";
@@ -331,7 +331,7 @@ static void Need(List<string> pos, int n, string usage)
 
 static (List<string>, Dictionary<string, string>) ParseArgs(string[] a)
 {
-    string[] flags = ["no-snap", "no-crop", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run", "files", "chapters"];
+    string[] flags = ["no-snap", "no-crop", "no-audio", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run", "files", "chapters"];
     var pos = new List<string>();
     var opt = new Dictionary<string, string>();
     for (int i = 0; i < a.Length; i++)
@@ -357,6 +357,7 @@ static void Usage() => Console.WriteLine("""
         --min-line 1.5   短于此秒数的行会扩展取样窗口
         --no-snap        不吸附镜头切换点
         --no-crop        不自动切黑边（默认两边都检测，黑边切掉再比画面）
+        --no-audio       不用声音粗对齐（默认先像 Sushi 那样按声音定位，再在附近比画面）
         --hwaccel        使用硬件解码
         --no-cache       不使用画面指纹缓存
         --no-log         不写 .check.log

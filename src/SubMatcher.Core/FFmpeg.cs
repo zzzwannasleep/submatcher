@@ -188,6 +188,23 @@ public static partial class FFmpeg
         return ms.ToArray();
     }
 
+    /// <summary>
+    /// The first audio track as mono float samples, sample 0 at the container's time zero (like the players' clock and the
+    /// subtitles), gaps filled with silence. Null when there is no audio track.
+    /// </summary>
+    public static async Task<float[]?> ReadAudio(string path, int rate, CancellationToken ct)
+    {
+        using var p = Start("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-i", path, "-map", "0:a:0?", "-vn", "-sn", "-dn",
+            "-af", $"aresample={rate}:async=1:first_pts=0", "-ac", "1", "-f", "f32le", "-"]);
+        using var reg = ct.Register(() => { try { p.Kill(true); } catch { } });
+        var errTask = p.StandardError.ReadToEndAsync(CancellationToken.None);
+        var ms = new MemoryStream();
+        await p.StandardOutput.BaseStream.CopyToAsync(ms, ct);
+        await p.WaitForExitAsync(ct);
+        await errTask;
+        return ms.Length < rate * 4 ? null : System.Runtime.InteropServices.MemoryMarshal.Cast<byte, float>(ms.GetBuffer().AsSpan(0, (int)ms.Length & ~3)).ToArray();
+    }
+
     /// <summary>One frame as PNG bytes, for previews.</summary>
     public static async Task<byte[]> GrabFrame(string path, double seconds, int width, CancellationToken ct = default)
     {

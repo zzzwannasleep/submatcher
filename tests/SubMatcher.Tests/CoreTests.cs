@@ -198,6 +198,48 @@ public class CoreTests
         Assert.All(r.Skip(1), x => Assert.Equal(48, x.ShiftFrames));
     }
 
+    static SubtitleDoc Lines(int count, int everyMs) => SubtitleDoc.Parse("[Events]\n" + string.Concat(Enumerable.Range(0, count).Select(i =>
+        $"Dialogue: 0,{SubtitleDoc.FormatAssTime(1000 + i * everyMs)},{SubtitleDoc.FormatAssTime(3000 + i * everyMs)},D,,0,0,0,,line{i}\n")), SubFormat.Ass);
+
+    [Fact]
+    public void SoundFindsTheShiftThroughVolumeAndNoise()
+    {
+        // "Speech": random tones of random length with pauses. Target: 1.5 s of silence first, half as loud, with hiss.
+        var rng = new Random(7);
+        var src = new List<float>();
+        while (src.Count < 60 * Fingerprint.AudioRate)
+        {
+            double f = 150 + rng.NextDouble() * 2500, len = 0.08 + rng.NextDouble() * 0.3;
+            for (int i = 0; i < len * Fingerprint.AudioRate; i++) src.Add((float)(0.3 * Math.Sin(2 * Math.PI * f * i / Fingerprint.AudioRate)));
+            src.AddRange(new float[rng.Next(0, 1200)]);
+        }
+        var dst = new float[(int)(1.5 * Fingerprint.AudioRate)].Concat(src.Select(x => x * 0.5f + (float)(rng.NextDouble() - 0.5) * 0.01f)).ToArray();
+        var a = Fingerprint.FromAudio(Fingerprint.BandLog(src.ToArray()), Fps);
+        var b = Fingerprint.FromAudio(Fingerprint.BandLog(dst), Fps);
+        var r = new Matcher(a, b, new SyncOptions { SnapToCuts = false }).Match(Lines(14, 4000).Events);
+        Assert.All(r, x => { Assert.Equal(36, x.ShiftFrames); Assert.True(x.Cost < 0.4); });
+    }
+
+    [Fact]
+    public void WhereThePictureFailsTheSoundsShiftIsKeptNotANeighbours()
+    {
+        // Target: 5 s of extra footage inserted at 40 s, and 40–60 s of the source altered beyond recognition (a censored
+        // TV cut). Pictures alone would hand those lines the shift from before the insert; the sound knows better.
+        var src = SyntheticVideo(100 * Fps, 8);
+        int d = Fingerprint.Dim;
+        var dst = src[..(40 * Fps * d)].Concat(SyntheticVideo(5 * Fps, 9)).Concat(src[(40 * Fps * d)..]).ToArray();
+        new Random(10).NextBytes(dst.AsSpan(45 * Fps * d, 20 * Fps * d));
+        var doc = Lines(24, 4000);
+        var prior = doc.Events.Select(e => (int?)(e.Start >= 40_000 ? 5 * Fps : 0)).ToArray();
+        var r = new Matcher(new Fingerprint(src, Fps), new Fingerprint(dst, Fps), new SyncOptions()) { Prior = prior }.Match(doc.Events);
+        foreach (var x in r)
+        {
+            Assert.Equal(x.OldStart >= 40_000 ? 5 * Fps : 0, x.ShiftFrames);
+            if (x.OldStart >= 41_000 && x.OldEnd <= 60_000) Assert.Equal(MatchStatus.Audio, x.Status);
+        }
+        Assert.DoesNotContain(r, x => x.NeedsCheck);
+    }
+
     [Fact]
     public async Task RefusesHalfDownloadedFiles()
     {

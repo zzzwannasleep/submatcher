@@ -16,6 +16,7 @@ public sealed class Fingerprint
     public double Fps { get; }
     public int Count { get; }
     readonly float[] _v;
+    readonly int _dim = Dim;
 
     /// <summary>1 - similarity between frame i-1 and i; high = hard cut.</summary>
     public float[] Change { get; }
@@ -54,7 +55,136 @@ public sealed class Fingerprint
         for (int f = 1; f < Count; f++) Change[f] = 1 - Dot(Frame(f - 1), Frame(f));
     }
 
-    public ReadOnlySpan<float> Frame(int i) => _v.AsSpan(i * Dim, Dim);
+    Fingerprint(float[] v, int dim, double fps)
+    {
+        (_v, _dim, Fps, Count) = (v, dim, fps, v.Length / dim);
+        Change = new float[Count]; // no cuts in sound
+    }
+
+    public ReadOnlySpan<float> Frame(int i) => _v.AsSpan(i * _dim, _dim);
+
+    // ---------------- sound ----------------
+
+    public const int AudioRate = 8000;
+    const int Hop = AudioRate / 100, Fft = 256, Bands = 16, HopsPerFrame = 4;
+
+    /// <summary>
+    /// The soundtrack on the same frame grid as the pictures, so a Matcher over it gives shifts in the same frames:
+    /// each frame is the log spectrogram (16 bands × 4 hops of 10 ms) from that frame's time, per-band average removed
+    /// (a different EQ or mix level cancels), zero-mean and unit-length. Silence becomes the same constant vector.
+    /// </summary>
+    public static Fingerprint FromAudio(float[] bandLog, double fps)
+    {
+        int hops = bandLog.Length / Bands, dim = Bands;
+        var mean = new double[Bands];
+        for (int h = 0; h < hops; h++) for (int k = 0; k < Bands; k++) mean[k] += bandLog[h * Bands + k];
+        for (int k = 0; k < Bands; k++) mean[k] /= Math.Max(1, hops);
+        int count = hops <= HopsPerFrame ? 0 : (int)((hops - HopsPerFrame - 1) * fps / 100) + 1; // last frame's hops stay in range
+        var v = new float[count * dim];
+        float flat = 1f / MathF.Sqrt(dim);
+        for (int f = 0; f < count; f++)
+        {
+            int h0 = (int)Math.Round(f * 100 / fps);
+            var dst = v.AsSpan(f * dim, dim);
+            float loud = float.MinValue;
+            // Averaged over the frame's 40 ms, not per 10 ms: two releases' sound is rarely offset by whole frames.
+            for (int k = 0; k < Bands; k++)
+            {
+                float x = 0;
+                for (int j = 0; j < HopsPerFrame; j++) x += bandLog[(h0 + j) * Bands + k];
+                x /= HopsPerFrame;
+                loud = Math.Max(loud, x);
+                dst[k] = x - (float)mean[k];
+            }
+            // ponytail: -6 (log10 power) ≈ -60 dBFS counts as silence; like flat pictures, it is evidence of nothing.
+            if (loud < -6) { dst.Fill(flat); continue; }
+            float avg = 0;
+            foreach (var x in dst) avg += x;
+            avg /= dim;
+            double ss = 0;
+            foreach (ref var x in dst) { x -= avg; ss += x * x; }
+            if (ss < 1e-9) { dst.Fill(flat); continue; }
+            var inv = (float)(1 / Math.Sqrt(ss));
+            foreach (ref var x in dst) x *= inv;
+        }
+        return new Fingerprint(v, dim, fps);
+    }
+
+    /// <summary>Mono 8 kHz samples → log10 power in 16 log-spaced bands (60 Hz–4 kHz) every 10 ms.</summary>
+    public static float[] BandLog(ReadOnlySpan<float> pcm)
+    {
+        int hops = pcm.Length < Fft ? 0 : (pcm.Length - Fft) / Hop + 1;
+        var edges = Enumerable.Range(0, Bands + 1).Select(b => (int)Math.Round(2 * Math.Pow(Fft / 2 / 2.0, b / (double)Bands))).ToArray();
+        var win = Enumerable.Range(0, Fft).Select(i => (float)(0.5 - 0.5 * Math.Cos(2 * Math.PI * i / Fft))).ToArray();
+        var outp = new float[hops * Bands];
+        var samples = pcm.ToArray();
+        Parallel.For(0, (hops + 1023) / 1024, chunk =>
+        {
+            var re = new float[Fft];
+            var im = new float[Fft];
+            for (int h = chunk * 1024; h < Math.Min(hops, chunk * 1024 + 1024); h++)
+            {
+                for (int i = 0; i < Fft; i++) { re[i] = samples[h * Hop + i] * win[i]; im[i] = 0; }
+                FftInPlace(re, im);
+                for (int b = 0; b < Bands; b++)
+                {
+                    double p = 0;
+                    for (int k = edges[b]; k < Math.Max(edges[b] + 1, edges[b + 1]); k++) p += re[k] * re[k] + im[k] * im[k];
+                    outp[h * Bands + b] = (float)Math.Log10(p / ((double)Fft * Fft) + 1e-10);
+                }
+            }
+        });
+        return outp;
+    }
+
+    static void FftInPlace(float[] re, float[] im)
+    {
+        int n = re.Length;
+        for (int i = 1, j = 0; i < n; i++)
+        {
+            int bit = n >> 1;
+            for (; (j & bit) != 0; bit >>= 1) j ^= bit;
+            j ^= bit;
+            if (i < j) { (re[i], re[j]) = (re[j], re[i]); (im[i], im[j]) = (im[j], im[i]); }
+        }
+        for (int len = 2; len <= n; len <<= 1)
+        {
+            double ang = -2 * Math.PI / len;
+            for (int i = 0; i < n; i += len)
+                for (int k = 0; k < len / 2; k++)
+                {
+                    float wr = (float)Math.Cos(ang * k), wi = (float)Math.Sin(ang * k);
+                    int a = i + k, b = a + len / 2;
+                    float xr = re[b] * wr - im[b] * wi, xi = re[b] * wi + im[b] * wr;
+                    re[b] = re[a] - xr; im[b] = im[a] - xi;
+                    re[a] += xr; im[a] += xi;
+                }
+        }
+    }
+
+    /// <summary>The first audio track as band energies (cached); null when the file has no sound.</summary>
+    public static async Task<Fingerprint?> FromAudio(string path, double fps, bool useCache, CancellationToken ct)
+    {
+        var cache = CachePath(path, $"audio|{AudioRate}|{Bands}", ".abin");
+        float[]? bands = null;
+        if (useCache && File.Exists(cache))
+        {
+            try { bands = MemoryMarshal.Cast<byte, float>(await File.ReadAllBytesAsync(cache, ct)).ToArray(); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        if (bands == null)
+        {
+            var pcm = await FFmpeg.ReadAudio(path, AudioRate, ct);
+            if (pcm == null) return null;
+            bands = await Task.Run(() => BandLog(pcm), ct);
+            if (useCache)
+            {
+                try { Directory.CreateDirectory(CacheDir); await File.WriteAllBytesAsync(cache, MemoryMarshal.AsBytes(bands.AsSpan()).ToArray(), ct); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        return FromAudio(bands, fps);
+    }
 
     public bool IsCut(int f) => f > 0 && f < Count && Change[f] > 0.35f
         && Change[f] >= Change[f - 1] && (f + 1 >= Count || Change[f] >= Change[f + 1]);

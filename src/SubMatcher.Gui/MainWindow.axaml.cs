@@ -271,6 +271,7 @@ public partial class MainWindow : Window
         HwAccel = OptHw.IsChecked == true,
         UseCache = OptCache.IsChecked == true,
         AutoCrop = AutoCrop.IsChecked == true,
+        UseAudio = OptAudio.IsChecked == true,
     };
 
     static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().Trim('"');

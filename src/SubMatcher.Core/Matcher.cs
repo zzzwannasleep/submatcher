@@ -18,11 +18,13 @@ public sealed class SyncOptions
     public bool UseCache { get; set; } = true;
     /// <summary>Detect black bars on both videos and cut them off before comparing pictures.</summary>
     public bool AutoCrop { get; set; } = true;
+    /// <summary>Align the soundtracks first (Sushi's way) and search the pictures around that; off = pictures only.</summary>
+    public bool UseAudio { get; set; } = true;
     /// <summary>Embedded subtitle stream to use when no subtitle file is given.</summary>
     public int SubtitleStream { get; set; }
 }
 
-public enum MatchStatus { Ok, Low, Jump, Smoothed, Static, Empty, Inherited, CutMiss, OutOfRange }
+public enum MatchStatus { Ok, Low, Jump, Smoothed, Static, Empty, Inherited, CutMiss, OutOfRange, Audio }
 
 public sealed class EventResult
 {
@@ -59,6 +61,14 @@ public sealed class Matcher(Fingerprint a, Fingerprint b, SyncOptions o)
     public double SourceStartMs { get; init; }
     public double TargetStartMs { get; init; }
 
+    /// <summary>
+    /// Per event: the shift the soundtrack found (Sushi's way, in this matcher's frames), or null where the sound had
+    /// no confident answer. The picture search is then centred there instead of on the previous line, so inserted or
+    /// cut footage (CC / broadcast versions) doesn't send lines to a wrong neighbouring shift; lines the picture
+    /// can't confirm keep the sound's answer rather than inheriting a neighbour's.
+    /// </summary>
+    public int?[]? Prior { get; init; }
+
     readonly record struct Hit(int Offset, double Cost, bool Ambiguous, bool Jump);
 
     static readonly Regex SignTags = new(@"\\(pos|move|org|clip|iclip|t|frz|frx|fry|fax|fay|p[1-9])\s*\(|\\p[1-9]\b|\\fr[xyz]?-?\d", RegexOptions.Compiled);
@@ -78,33 +88,39 @@ public sealed class Matcher(Fingerprint a, Fingerprint b, SyncOptions o)
         for (int i = 0; i < n; i++) win[i] = empty[i] ? (-1, -1) : Window(unit[i].Start, unit[i].End);
 
         var hits = new Hit?[n];
-        var cache = new Dictionary<(int, int), Hit>();
+        var cache = new Dictionary<((int, int), int), Hit>();
         int radius = Math.Max(1, (int)Math.Round(o.WindowSeconds * _fps));
+        // ponytail: sound is frame-accurate; ±2 s only absorbs A/V delay differences between releases.
+        int audioRadius = Math.Min(radius, (int)Math.Round(2 * _fps));
+        int? AudioShift(int i) => Prior is { } p && i < p.Length ? p[i] : null;
 
-        // Pass 1: search each line near the last trustworthy shift.
+        // Pass 1: search each line near the sound's shift, or else near the last trustworthy shift.
         int prior = 0;
         for (int k = 0; k < n; k++)
         {
             ct.ThrowIfCancellationRequested();
             int i = order[k];
             if (win[i].S < 0) continue; // placeholder line, or starts after the source video ends
-            if (!cache.TryGetValue(win[i], out var hit))
+            var au = AudioShift(i);
+            int center = au ?? prior, r = au != null ? audioRadius : radius;
+            if (!cache.TryGetValue((win[i], center), out var hit))
             {
                 var (s, e) = win[i];
-                hit = Search(s, e, prior - radius, prior + radius, prior, Step(s, e));
-                if (hit.Cost > o.MaxCost)
+                hit = Search(s, e, center - r, center + r, center, Step(s, e));
+                // Where the sound knows, a picture found far away is a repeated shot, not a jump.
+                if (hit.Cost > o.MaxCost && au == null)
                 {
                     var far = FullSearch(s, e);
                     if (far.Cost < hit.Cost - 0.05) hit = far with { Jump = true };
                 }
-                cache[win[i]] = hit;
+                cache[(win[i], center)] = hit;
             }
             hits[i] = hit;
             if (Reliable(hit)) prior = hit.Offset;
             progress?.Report((k + 1.0) / n);
         }
 
-        if (!hits.Any(h => h is { } x && Reliable(x)))
+        if (!hits.Any(h => h is { } x && Reliable(x)) && Prior?.Any(x => x != null) != true)
             throw new InvalidOperationException("两个片源的画面完全对不上：确认选对了视频，或调高「最大代价」。");
 
         var shift = new int[n];
@@ -124,16 +140,24 @@ public sealed class Matcher(Fingerprint a, Fingerprint b, SyncOptions o)
             int i = order[k];
             if (IsReliable(i)) continue;
             int? p = Neighbour(order, k, -1, IsReliable), q = Neighbour(order, k, +1, IsReliable);
-            var cands = new[] { p, q }.Where(x => x != null).Select(x => shift[x!.Value]).Distinct().ToList();
-            if (win[i].S < 0) { shift[i] = cands[0]; continue; }
+            var au = AudioShift(i);
+            var cands = new[] { p, q }.Where(x => x != null).Select(x => shift[x!.Value]).Append(au ?? int.MinValue)
+                .Where(c => c != int.MinValue).Distinct().ToList();
+            if (cands.Count == 0) continue;
+            if (win[i].S < 0) { shift[i] = au ?? cands[0]; continue; }
             var (s, e) = win[i];
-            int best = cands.MinBy(c => WindowCost(s, e, c, Step(s, e)));
+            // The sound's shift wins unless the picture confirms a neighbour's clearly better (a picture that fits
+            // nothing is noise, and noise must not outvote the sound).
+            double Fit(int c) => WindowCost(s, e, c, Step(s, e)) - (c == au ? 2 * TieEps : 0);
+            int best = cands.MinBy(Fit);
             double bestCost = WindowCost(s, e, best, Step(s, e));
+            if (au is { } a && best != a && bestCost > o.MaxCost) { best = a; bestCost = WindowCost(s, e, a, Step(s, e)); }
             // An ambiguous (static) shot keeps its own answer only if it is clearly better than the neighbours'.
             if (hits[i] is { Ambiguous: true } h && h.Cost <= o.MaxCost && h.Cost < bestCost - 2 * TieEps) continue;
             shift[i] = best; cost[i] = bestCost;
-            // A static shot that fits the neighbours well is fine; anything else gets a human look.
-            status[i] = hits[i] is { Ambiguous: true } && bestCost <= o.WarnCost ? MatchStatus.Static : MatchStatus.Inherited;
+            // A static shot that fits the neighbours well is fine; so is the sound's answer; anything else gets a human look.
+            status[i] = hits[i] is { Ambiguous: true } && bestCost <= o.WarnCost ? MatchStatus.Static
+                : best == au ? MatchStatus.Audio : MatchStatus.Inherited;
         }
 
         // Pass 3: a lone line disagreeing with two agreeing neighbours is voted down if their shift fits nearly as well.

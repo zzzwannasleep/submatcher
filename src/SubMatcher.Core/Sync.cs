@@ -82,12 +82,16 @@ public static class Sync
         void Report() => progress?.Report(new("解码画面", Math.Min(1, (doneA + doneB) / expected) * 0.85));
         var ta = Fingerprint.FromVideo(srcVideo, fps, o.HwAccel, o.UseCache, f => { doneA = f; Report(); }, ct, srcCrop);
         var tb = Fingerprint.FromVideo(dstVideo, fps, o.HwAccel, o.UseCache, f => { doneB = f; Report(); }, ct, dstCrop);
+        var sa = o.UseAudio ? Fingerprint.FromAudio(srcVideo, fps, o.UseCache, ct) : Task.FromResult<Fingerprint?>(null);
+        var sb = o.UseAudio ? Fingerprint.FromAudio(dstVideo, fps, o.UseCache, ct) : Task.FromResult<Fingerprint?>(null);
         var a = await ta;
         var b = await tb;
         CheckComplete(srcVideo, srcInfo, a);
         CheckComplete(dstVideo, dstInfo, b);
 
-        var matcher = new Matcher(a, b, o) { SourceStartMs = srcInfo.VideoStartMs, TargetStartMs = dstInfo.VideoStartMs };
+        progress?.Report(new("声音粗对齐", 0.85));
+        var (prior, soundNote) = await SoundPrior(await sa, await sb, doc.Events, o, (dstInfo.VideoStartMs - srcInfo.VideoStartMs) * fps / 1000, ct);
+        var matcher = new Matcher(a, b, o) { SourceStartMs = srcInfo.VideoStartMs, TargetStartMs = dstInfo.VideoStartMs, Prior = prior };
         var results = await Task.Run(() => matcher.Match(doc.Events,
             new Progress<double>(f => progress?.Report(new("匹配画面", 0.85 + f * 0.15))), ct), ct);
 
@@ -102,7 +106,7 @@ public static class Sync
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
         doc.Save(output);
 
-        var log = CropNote(o.AutoCrop, srcCrop, dstCrop, fitted) + BuildCheckLog(results, fps, srcVideo, dstVideo);
+        var log = CropNote(o.AutoCrop, srcCrop, dstCrop, fitted) + soundNote + BuildCheckLog(results, fps, srcVideo, dstVideo);
         progress?.Report(new("完成", 1));
         return new SyncResult { Events = results, Doc = doc, OutputPath = output, Fps = fps, CheckLog = log, SrcCrop = srcCrop, DstCrop = dstCrop, Fitted = fitted };
     }
@@ -111,6 +115,24 @@ public static class Sync
     public static string? CropSummary(Crop? src, Crop? dst, Canvas? fitted = null) => src == null && dst == null ? null
         : $"已切黑边 · 源 {(src == null ? "无黑边" : $"{src.W}×{src.H}")} · 目标 {(dst == null ? "无黑边" : $"{dst.W}×{dst.H}")}"
           + (fitted != null ? " · 字幕已按画面做比例调整" : "");
+
+    /// <summary>
+    /// Sushi's pass over the soundtracks: every line's shift found by sound, in picture frames (sound is on the container
+    /// clock, pictures on their first frame's). Only lines the sound is sure about are passed on.
+    /// </summary>
+    static async Task<(int?[]?, string)> SoundPrior(Fingerprint? a, Fingerprint? b, IReadOnlyList<SubEvent> events, SyncOptions o, double startDiff,
+        CancellationToken ct)
+    {
+        if (!o.UseAudio) return (null, "");
+        if (a == null || b == null) return (null, "声音粗对齐：有一边没有音轨，只用画面\n\n");
+        var ao = new SyncOptions { WindowSeconds = o.WindowSeconds, MinLineSeconds = o.MinLineSeconds, SnapToCuts = false };
+        List<EventResult> r;
+        try { r = await Task.Run(() => new Matcher(a, b, ao).Match(events, null, ct), ct); }
+        catch (InvalidOperationException) { return (null, "声音粗对齐：两边声音对不上（重新混音？），只用画面\n\n"); }
+        var prior = r.Select(x => x.Status is MatchStatus.Ok or MatchStatus.Smoothed || x.Status == MatchStatus.Jump && x.Cost <= o.WarnCost ? (int?)(int)Math.Round(x.ShiftFrames - startDiff) : null).ToArray();
+        int sure = prior.Count(x => x != null), lines = events.Count(e => !e.IsComment);
+        return (prior, $"声音粗对齐：{sure}/{lines} 行由声音定位，画面在其附近细调\n\n");
+    }
 
     static string CropNote(bool auto, Crop? src, Crop? dst, Canvas? fitted)
     {
@@ -207,6 +229,7 @@ public static class Sync
         MatchStatus.Empty => "空行·沿用邻近",
         MatchStatus.CutMiss => "屏幕字未落在切点",
         MatchStatus.OutOfRange => "超出源视频",
+        MatchStatus.Audio => "画面未确认·按声音",
         _ => s.ToString(),
     };
 

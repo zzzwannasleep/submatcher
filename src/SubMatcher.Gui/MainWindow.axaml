@@ -97,6 +97,8 @@
                     <WrapPanel Grid.Row="6" Grid.ColumnSpan="3">
                       <ToggleSwitch x:Name="OptSnap" Content="吸附镜头切换" IsChecked="True" Margin="0,0,16,6"
                                     ToolTip.Tip="原本卡在切镜头处的时间点，调整后也卡在目标视频的切镜头处" />
+                      <ToggleSwitch x:Name="OptAudio" Content="声音粗对齐" IsChecked="True" Margin="0,0,16,6"
+                                    ToolTip.Tip="先像 Sushi 那样按声音给每行定位，再在附近比画面。多出/删减片段、画面对不上的行也不会错沿用邻近行。没有音轨或声音对不上时自动只用画面" />
                       <ToggleSwitch x:Name="OptHw" Content="硬件解码" Margin="0,0,16,6" />
                       <ToggleSwitch x:Name="OptCache" Content="缓存画面指纹" IsChecked="True" Margin="0,0,16,6" />
                     </WrapPanel>
