@@ -6,7 +6,7 @@ using System.Text.Json;
 namespace SubMatcher.Core;
 
 /// <param name="VideoStartMs">First video frame's time relative to the container start (0 for most mkv/mp4).</param>
-public sealed record VideoInfo(double Fps, double DurationSeconds, double VideoStartMs = 0);
+public sealed record VideoInfo(double Fps, double DurationSeconds, double VideoStartMs = 0, int Width = 0, int Height = 0);
 
 /// <summary>The picture inside black bars: W×H at (X, Y) of a FrameW×FrameH frame.</summary>
 public sealed record Crop(int W, int H, int X, int Y, int FrameW, int FrameH)
@@ -62,7 +62,7 @@ public static partial class FFmpeg
     public static async Task<VideoInfo> Probe(string path, CancellationToken ct = default)
     {
         var json = await RunText("ffprobe", ["-v", "error", "-select_streams", "v:0",
-            "-show_entries", "stream=avg_frame_rate,r_frame_rate,start_time:format=duration,start_time", "-of", "json", path], ct);
+            "-show_entries", "stream=avg_frame_rate,r_frame_rate,start_time,width,height:format=duration,start_time", "-of", "json", path], ct);
         using var doc = JsonDocument.Parse(json); // JsonDocument: reflection-free, fine under Native AOT
         var root = doc.RootElement;
         string? Str(JsonElement e, string name) => e.TryGetProperty(name, out var v) ? v.GetString() : null;
@@ -77,7 +77,8 @@ public static partial class FFmpeg
         double dur = format.ValueKind == JsonValueKind.Object ? Num(Str(format, "duration")) : 0;
         // Players show time relative to the container start; the first video frame may come later (m2ts/ts often do).
         double start = Num(Str(stream, "start_time")) - (format.ValueKind == JsonValueKind.Object ? Num(Str(format, "start_time")) : 0);
-        return new VideoInfo(fps, dur, Math.Max(0, start) * 1000);
+        int Int(string n) => stream.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetInt32() : 0;
+        return new VideoInfo(fps, dur, Math.Max(0, start) * 1000, Int("width"), Int("height"));
     }
 
     static double ParseRate(string s)
@@ -199,6 +200,22 @@ public static partial class FFmpeg
         await p.WaitForExitAsync(ct);
         if (ms.Length == 0) throw new InvalidOperationException($"截图失败：{(await errTask).Trim()}");
         return ms.ToArray();
+    }
+
+    /// <summary>Subtitle streams in order (N = index among subtitle streams, as ExtractSubtitle takes it).</summary>
+    public static async Task<List<(int N, string Codec, string Title)>> SubtitleTracks(string video, CancellationToken ct = default)
+    {
+        var json = await RunText("ffprobe", ["-v", "error", "-select_streams", "s", "-show_entries", "stream=codec_name:stream_tags=title,language", "-of", "json", video], ct);
+        using var doc = JsonDocument.Parse(json);
+        var list = new List<(int, string, string)>();
+        if (!doc.RootElement.TryGetProperty("streams", out var ss)) return list;
+        int n = 0;
+        foreach (var s in ss.EnumerateArray())
+        {
+            string? tag = s.TryGetProperty("tags", out var t) ? (t.TryGetProperty("title", out var ti) ? ti.GetString() : t.TryGetProperty("language", out var la) ? la.GetString() : null) : null;
+            list.Add((n++, s.TryGetProperty("codec_name", out var c) ? c.GetString() ?? "" : "", tag ?? ""));
+        }
+        return list;
     }
 
     /// <summary>Returns an embedded text subtitle track (0-based among subtitle streams) as ASS text. Piped, no temp file.</summary>

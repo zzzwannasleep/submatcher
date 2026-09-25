@@ -391,6 +391,39 @@
                 </Border>
               </Grid>
 
+              <Border x:Name="FitCard" Classes="card">
+                <StackPanel Spacing="10">
+                  <TextBlock Classes="h" Text="比例调整（黑边适配）" />
+                  <TextBlock Classes="hint" TextWrapping="Wrap"
+                             Text="字幕是按没有黑边的画面做的（如 PlayRes 1920×816），视频却带黑边（1920×1080），播放时字会被拉伸、屏幕字跑进黑边。检测视频黑边后把字幕挪回画面里：字号不变，坐标整体平移。调轴时两边黑边不同会自动做这一步。" />
+                  <Grid ColumnDefinitions="*,12,*">
+                    <StackPanel>
+                      <TextBlock Classes="field" Text="视频（用来检测黑边）" />
+                      <TextBox x:Name="FitVideo" Watermark="拖入或浏览…">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Click="BrowseFitVideo" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                      <TextBlock Classes="field" Text="字幕（留空 = 视频里的内封 ASS）" />
+                      <TextBox x:Name="FitSub" Watermark="拖入或浏览…">
+                        <TextBox.InnerRightContent>
+                          <Button Theme="{DynamicResource BorderlessButton}" Content="浏览" Click="BrowseFitSub" Padding="8,0" />
+                        </TextBox.InnerRightContent>
+                      </TextBox>
+                    </StackPanel>
+                  </Grid>
+                  <Grid ColumnDefinitions="*,Auto">
+                    <ToggleSwitch x:Name="FitInPlace" Content="覆盖原字幕" VerticalAlignment="Center"
+                                  ToolTip.Tip="关掉时输出 xx.fit.ass；内封字幕总是输出到视频旁边：视频名.sc.ass / .tc.ass" />
+                    <Button x:Name="FitBtn" Grid.Column="1" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="调整"
+                            Click="ToolFit" VerticalAlignment="Center" MinWidth="96" HorizontalContentAlignment="Center" />
+                  </Grid>
+                  <SelectableTextBlock x:Name="FitLog" FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12" TextWrapping="Wrap" IsVisible="False" />
+                </StackPanel>
+              </Border>
+
               <Border x:Name="ZhCard" Classes="card">
                 <StackPanel Spacing="10">
                   <Grid ColumnDefinitions="*,Auto">

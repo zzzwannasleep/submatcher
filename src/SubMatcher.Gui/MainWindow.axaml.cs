@@ -129,7 +129,7 @@ public partial class MainWindow : Window
             new(() => TabSubs, "下载与改名",
                 "从 Telegram 字幕频道检索并下载某个平台的全部简体 / 繁体字幕（扫码登录一次）；调完轴、子集化完，一键把字幕改成视频名，播放器自动加载。"),
             new(() => TabTools, "工具",
-                "手动平移（可只平移某个区间）、帧率转换、编码转 UTF-8、简繁转换（繁化姬），还有字体子集化：把用到的字精简成小字体嵌进字幕。"),
+                "手动平移（可只平移某个区间）、帧率转换、编码转 UTF-8、比例调整（字幕按无黑边画面做、视频却带黑边时挪回画面里）、简繁转换（繁化姬），还有字体子集化。"),
             new(() => TourBtn, "随时重看",
                 "以后想再看一遍，点这里就行。"),
         ]);
@@ -160,6 +160,9 @@ public partial class MainWindow : Window
                     break;
                 case 1 when Directory.Exists(p):
                     (string.IsNullOrWhiteSpace(BatchSrc.Text) ? BatchSrc : BatchDst).Text = p;
+                    break;
+                case 2 when Sync.IsVideo(p):
+                    FitVideo.Text = p;
                     break;
                 case 2 when Sync.IsSub(p):
                     ToolSub.Text = p;
@@ -290,7 +293,7 @@ public partial class MainWindow : Window
             .Select(g => $"{Sync.FormatShift(g.Key, result.Fps)} × {g.Count()}");
         Summary.Type = check == 0 ? NotificationType.Success : NotificationType.Warning;
         Summary.Header = check == 0 ? $"全部 {result.Events.Count} 行都对上了" : $"{result.Events.Count} 行，{check} 行需要检查";
-        Summary.Content = "主要偏移：" + string.Join("，", shifts) + (Sync.CropSummary(result.SrcCrop, result.DstCrop) is { } crop ? "\n" + crop : "");
+        Summary.Content = "主要偏移：" + string.Join("，", shifts) + (Sync.CropSummary(result.SrcCrop, result.DstCrop, result.Fitted) is { } crop ? "\n" + crop : "");
         EmptyHint.IsVisible = false;
         ResultsPanel.IsVisible = true;
         // Next frame so the transition runs from the hidden state.

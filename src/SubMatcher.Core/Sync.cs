@@ -16,6 +16,8 @@ public sealed class SyncResult
     /// <summary>Black bars cut off before matching (null = none found, or auto-crop off).</summary>
     public Crop? SrcCrop { get; init; }
     public Crop? DstCrop { get; init; }
+    /// <summary>The script's canvas moved onto the target's picture (比例调整), or null.</summary>
+    public Canvas? Fitted { get; init; }
     public int NeedsCheckCount => Events.Count(e => e.NeedsCheck);
 }
 
@@ -90,26 +92,33 @@ public static class Sync
             new Progress<double>(f => progress?.Report(new("匹配画面", 0.85 + f * 0.15))), ct), ct);
 
         for (int i = 0; i < doc.Events.Count; i++) { doc.Events[i].Start = results[i].NewStart; doc.Events[i].End = results[i].NewEnd; }
+        // 比例调整: the script is laid out on the source's picture; when the bars differ, move its canvas onto the target's picture.
+        Canvas? fitted = null;
+        if (o.AutoCrop && doc.Format == SubFormat.Ass && srcInfo.Width > 0 && dstInfo.Width > 0 && AssFrame.PlayRes(doc.Serialize()) is { } res)
+        {
+            var c = AssFrame.Map(res, (srcInfo.Width, srcInfo.Height), srcCrop, (dstInfo.Width, dstInfo.Height), dstCrop);
+            if (!c.IsIdentity) { fitted = c; doc = SubtitleDoc.Parse(AssFrame.Apply(doc.Serialize(), c), SubFormat.Ass); }
+        }
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
         doc.Save(output);
 
-        var log = CropNote(o.AutoCrop, srcCrop, dstCrop) + BuildCheckLog(results, fps, srcVideo, dstVideo);
+        var log = CropNote(o.AutoCrop, srcCrop, dstCrop, fitted) + BuildCheckLog(results, fps, srcVideo, dstVideo);
         progress?.Report(new("完成", 1));
-        return new SyncResult { Events = results, Doc = doc, OutputPath = output, Fps = fps, CheckLog = log, SrcCrop = srcCrop, DstCrop = dstCrop };
+        return new SyncResult { Events = results, Doc = doc, OutputPath = output, Fps = fps, CheckLog = log, SrcCrop = srcCrop, DstCrop = dstCrop, Fitted = fitted };
     }
 
     /// <summary>One line for the UI: which side had black bars cut before matching; null when neither had any.</summary>
-    public static string? CropSummary(Crop? src, Crop? dst) => src == null && dst == null ? null
-        : $"已切黑边 · 源 {(src == null ? "无黑边" : $"{src.W}×{src.H}")} · 目标 {(dst == null ? "无黑边" : $"{dst.W}×{dst.H}")}";
+    public static string? CropSummary(Crop? src, Crop? dst, Canvas? fitted = null) => src == null && dst == null ? null
+        : $"已切黑边 · 源 {(src == null ? "无黑边" : $"{src.W}×{src.H}")} · 目标 {(dst == null ? "无黑边" : $"{dst.W}×{dst.H}")}"
+          + (fitted != null ? " · 字幕已按画面做比例调整" : "");
 
-    static string CropNote(bool auto, Crop? src, Crop? dst)
+    static string CropNote(bool auto, Crop? src, Crop? dst, Canvas? fitted)
     {
         if (!auto) return "黑边：未检测（已关闭自动切黑边）\n\n";
         var sb = new StringBuilder();
         sb.AppendLine($"黑边（匹配前切掉）: 源 {src?.ToString() ?? "无"} / 目标 {dst?.ToString() ?? "无"}");
-        // Only one side letterboxed: the script's coordinates are for the other frame, so positioned signs may sit in the wrong place.
-        if ((src == null) != (dst == null))
-            sb.AppendLine("注意：只有一边有黑边。字幕坐标按源视频的画面写的，用 \\pos 定位的屏幕字在目标视频上可能偏位，请抽查。");
+        if (fitted != null)
+            sb.AppendLine($"比例调整: 两边画面位置不同，字幕画布已挪到目标画面里（{fitted}）。字号不变，\\pos 等坐标整体平移");
         return sb.AppendLine().ToString();
     }
 

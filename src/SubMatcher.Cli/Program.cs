@@ -92,6 +92,14 @@ try
             return bad == 0 ? 0 : 1;
         }
 
+        case "fit":
+        {
+            Need(pos, 1, "fit <视频> [字幕]...");
+            var rs = await AssFrame.FitToVideo(pos[0], pos[1..], Flag("in-place"), !Flag("no-cache"), cts.Token);
+            foreach (var r in rs) Console.WriteLine($"{(r.Output != null ? "✓" : "–")} {r.Input}\n    {r.Message}{(r.Output != null ? $"\n    → {r.Output}" : "")}");
+            return 0;
+        }
+
         case "zh":
         {
             Need(pos, 1, "zh <字幕或目录>... --to sc|tc|cn|tw|hk");
@@ -220,7 +228,7 @@ async Task<int> RunSync(string src, string? sub, string dst, string? output)
     Console.Error.WriteLine();
     Console.WriteLine($"输出: {r.OutputPath}");
     Console.WriteLine($"共 {r.Events.Count} 行，需检查 {r.NeedsCheckCount} 行");
-    if (Sync.CropSummary(r.SrcCrop, r.DstCrop) is { } crop) Console.WriteLine("  " + crop);
+    if (Sync.CropSummary(r.SrcCrop, r.DstCrop, r.Fitted) is { } crop) Console.WriteLine("  " + crop);
     foreach (var g in r.Events.GroupBy(e => e.ShiftFrames).OrderByDescending(g => g.Count()).Take(5))
         Console.WriteLine($"  偏移 {Sync.FormatShift(g.Key, r.Fps)} × {g.Count()} 行");
     if (!Flag("no-log"))
@@ -324,6 +332,9 @@ static void Usage() => Console.WriteLine("""
     submatcher-cli subset <字幕或目录>... [-r] [--out-dir 目录 | --in-place]
         [--server https://font.anibt.net] [--api-key KEY] [--strict] [--clean] [--alias-salt SC]
         字体子集化：上传到 FontInAss 服务器，嵌入只含用到的字符的字体。默认输出 xx.subset.ass
+    submatcher-cli fit <视频> [字幕]... [--in-place]
+        比例调整：字幕是按没有黑边的画面做的（如 PlayRes 1920×816），视频却带黑边（1920×1080），播放时会被拉伸。
+        检测视频黑边，把字幕画布放到画面区域里：字号不变、坐标整体平移。不给字幕 = 处理视频里所有内封 ASS 轨
     submatcher-cli zh <字幕或目录>... --to sc|tc|cn|tw|hk [-r] [--out-dir 目录 | --in-place]
         简繁转换（繁化姬 https://zhconvert.org）：sc 简体化 / tc 繁体化 / cn 中国化 / tw 台湾化 / hk 香港化
         输出文件名里的语言标记会跟着换（CHS→CHT、.sc→.tc），没有标记就加上

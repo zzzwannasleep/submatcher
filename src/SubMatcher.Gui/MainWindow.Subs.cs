@@ -360,6 +360,30 @@ public partial class MainWindow
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { RenLog.Text += "\n\n失败：" + ex.Message; }
     }
 
+    // ---------------- 比例调整 ----------------
+
+    async void BrowseFitVideo(object? sender, RoutedEventArgs e) { if (await PickFile(VideoType) is { } p) FitVideo.Text = p; }
+    async void BrowseFitSub(object? sender, RoutedEventArgs e) { if (await PickFile(SubType) is { } p) FitSub.Text = p; }
+
+    async void ToolFit(object? sender, RoutedEventArgs e)
+    {
+        void Show(string s) { FitLog.IsVisible = true; FitLog.Text = s; }
+        if (Blank(FitVideo.Text) is not { } video) { Show("先选视频"); return; }
+        string[] subs = Blank(FitSub.Text) is { } s ? [s] : [];
+        bool inPlace = FitInPlace.IsChecked == true;
+        FitBtn.IsEnabled = false;
+        Show("检测黑边…");
+        try
+        {
+            var rs = await Task.Run(() => AssFrame.FitToVideo(video, subs, inPlace));
+            Show(string.Join("\n", rs.Select(r => $"{(r.Output != null ? "✓" : "–")} {r.Input}\n    {r.Message}{(r.Output != null ? "\n    → " + r.Output : "")}")));
+            int n = rs.Count(r => r.Output != null);
+            Toast("比例调整", n > 0 ? $"已调整 {n} 个字幕" : "不需要调整", n > 0 ? NotificationType.Success : NotificationType.Information);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException or UnauthorizedAccessException) { Show("失败：" + ex.Message); }
+        finally { FitBtn.IsEnabled = true; }
+    }
+
     // ---------------- 简繁转换 (繁化姬) ----------------
 
     public static string[] ZhModes { get; } = ZhConvert.Modes.Select(m => m.Label).ToArray();
