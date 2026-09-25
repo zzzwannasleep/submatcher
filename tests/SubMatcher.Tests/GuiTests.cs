@@ -167,7 +167,7 @@ public class GuiTests
         Click(tour2, "上一步");
         Assert.Equal(1, tour2.Index);
         while (tour2.IsOpen) Click(tour2, tour2.GetVisualDescendants().OfType<Button>().Any(b => b.Content as string == "完成") ? "完成" : "下一步");
-        Assert.Equal(9, tour2.Index);
+        Assert.Equal(11, tour2.Index);
     }
 
     /// <summary>Renders the main screens to PNG when SUBMATCHER_SHOTS is set — a visual check without touching a real desktop.</summary>

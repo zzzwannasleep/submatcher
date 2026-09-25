@@ -107,38 +107,73 @@ public partial class MainWindow : Window
 
     internal void StartTour(object? sender, RoutedEventArgs e)
     {
-        void OnSync() => Tabs.SelectedIndex = 0;
-        // Results-area steps need the panel on screen; show the empty frame if nothing has run yet.
-        void OnResults() { OnSync(); if (!ResultsPanel.IsVisible) { ResultsPanel.IsVisible = true; ResultsPanel.Classes.Add("shown"); EmptyHint.IsVisible = false; } }
+        void Page(TabItem tab) { HideEmptyResults(); Tabs.SelectedItem = tab; }
+        void Sync() => Page(TabSync);
         Tour.Start(
         [
             new(() => null, "欢迎使用 SubMatcher",
-                "用画面给字幕调轴：拿每行字幕出现时的画面，去新片源里找同样的画面，把时间轴搬过去。花 30 秒走一遍，随时可以跳过。"),
-            new(() => FilesCard, "① 选择文件",
-                "源视频 + 源字幕是旧片源（TV / Web），目标视频是新片源（BD）。源字幕留空会用源视频的内封字幕。\n也可以直接把文件拖进窗口：第一个视频算源，第二个算目标。", OnSync),
-            new(() => AdvancedPanel, "② 高级参数（一般不用动）",
-                "画面对不上时调大「最大代价」；两个片源相差很远时调大「搜索窗口」。", OnSync),
+                "把 TV / WEB 的字幕搬到 BD 上：按每行字幕出现时的画面，去新片源里找同一个画面。\n一分钟走一遍，随时可以跳过。", Sync),
+            new(() => FilesCard, "① 选文件",
+                "源视频 + 源字幕是旧片源，目标视频是新片源（BD）。\n直接把文件拖进窗口也行。", Sync),
+            new(() => SyncToggles, "② 两个常用开关",
+                "自动切黑边：两边黑边不同也能对上画面，字幕也跟着挪回画面里、不会被拉伸。\n调轴后自动子集化：输出直接嵌好字体。", Sync),
             new(() => RunBtn, "③ 开始调轴",
-                "解码 → 匹配 → 输出到目标视频旁边，另附一份 .check.log。同一个视频第二次跑会用缓存，几乎是秒出。", OnSync),
+                "字幕输出到目标视频旁边，另附一份检查日志。同一个视频再跑会用缓存，几乎秒出。", Sync),
             new(() => ResultsCard, "④ 检查结果",
-                "每行的偏移、匹配代价和状态。带 ⚠ 的行值得看一眼，打开右上角「只看需检查」可以快速过一遍。", OnResults),
+                "每行的偏移和状态。带 ⚠ 的行值得看一眼，右上角「只看需检查」能快速过一遍。", ShowDemoResults),
             new(() => PreviewCard, "⑤ 对照与微调",
-                "选中一行，这里并排显示新旧两边同一时刻的画面。对不上就 ±1 帧 / ±0.5 秒 微调，然后保存。", OnResults),
-            new(() => TabBatch, "批量",
-                "整季处理：选两个文件夹，按集数自动配对，外挂字幕和内封字幕都支持。", HideEmptyResults),
-            new(() => TabSubs, "下载与改名",
-                "从 Telegram 字幕频道检索并下载某个平台的全部简体 / 繁体字幕（扫码登录一次）；调完轴、子集化完，一键把字幕改成视频名，播放器自动加载。"),
+                "选中一行，这里并排显示两边同一时刻的画面。对不上就 ±1 帧微调，再保存。", ShowDemoResults),
+            new(() => BatchCard, "批量",
+                "整季一起调：选两个文件夹，按集数自动配对。", () => Page(TabBatch)),
+            new(() => TgCard, "下载字幕",
+                "从 Telegram 字幕频道按片名检索，选一个平台，下载它全部的简体或繁体字幕。第一次用要扫码登录。", () => Page(TabSubs)),
+            new(() => RenameCard, "自动改名",
+                "调完轴、子集化完，一键把字幕改成视频的名字，播放器就能自动加载。", () => Page(TabSubs)),
             new(() => TabTools, "工具",
-                "手动平移（可只平移某个区间）、帧率转换、编码转 UTF-8、比例调整（字幕按无黑边画面做、视频却带黑边时挪回画面里）、简繁转换（繁化姬），还有字体子集化。"),
+                "平移、转帧率、转编码、比例调整、简繁转换（繁化姬）、字体子集化，都在这一页。", () => Page(TabTools)),
+            new(() => UpdateCard, "设置",
+                "检查更新、Telegram 代理、画面缓存在这里。", () => Page(TabSettings)),
             new(() => TourBtn, "随时重看",
-                "以后想再看一遍，点这里就行。"),
+                "想再看一遍，点这里。", Sync),
         ]);
     }
+
+    /// <summary>A few made-up rows so the results steps of the tour have something to point at (only when nothing has run).</summary>
+    void ShowDemoResults()
+    {
+        Tabs.SelectedItem = TabSync;
+        if (_result != null) return;
+        if (_rows.Count == 0)
+        {
+            (string Text, int Frames, MatchStatus Status)[] demo =
+            [
+                ("早上好，今天也要加油哦", 72, MatchStatus.Ok), ("你又迟到了", 72, MatchStatus.Ok), ("抱歉，路上电车停了", 72, MatchStatus.Ok),
+                ("（广播）请各位同学注意", 72, MatchStatus.Low), ("……刚才那是什么声音", -48, MatchStatus.Ok), ("我们去看看吧", -48, MatchStatus.Ok),
+            ];
+            const double fps = 24000 / 1001.0;
+            for (int i = 0; i < demo.Length; i++)
+            {
+                long start = 2000 + i * 4200, shift = (long)Math.Round(demo[i].Frames * 1000 / fps);
+                _rows.Add(new Row(new EventResult
+                {
+                    Index = i, OldStart = start, OldEnd = start + 2800, NewStart = start + shift, NewEnd = start + 2800 + shift,
+                    ShiftFrames = demo[i].Frames, Text = demo[i].Text, Status = demo[i].Status, Cost = demo[i].Status == MatchStatus.Low ? 0.31 : 0.03,
+                }, fps));
+            }
+            Summary.Type = NotificationType.Warning;
+            Summary.Header = "示例：6 行，1 行需要检查";
+            Summary.Content = "主要偏移：+72 帧 (+3.003s) × 4，-48 帧 (-2.002s) × 2";
+            ApplyFilter();
+        }
+        if (!ResultsPanel.IsVisible) { ResultsPanel.IsVisible = true; ResultsPanel.Classes.Add("shown"); EmptyHint.IsVisible = false; }
+    }
+
 
     /// <summary>Undo the tour's placeholder results frame when nothing has actually run.</summary>
     void HideEmptyResults()
     {
         if (_result != null) return;
+        _rows.Clear(); // the tour's demo rows
         ResultsPanel.IsVisible = false;
         ResultsPanel.Classes.Remove("shown");
         EmptyHint.IsVisible = true;
