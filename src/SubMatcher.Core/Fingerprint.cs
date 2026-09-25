@@ -70,14 +70,15 @@ public sealed class Fingerprint
         return sum;
     }
 
-    public static async Task<Fingerprint> FromVideo(string path, double fps, bool hwaccel, bool useCache, Action<int>? onFrames, CancellationToken ct)
+    public static async Task<Fingerprint> FromVideo(string path, double fps, bool hwaccel, bool useCache, Action<int>? onFrames, CancellationToken ct,
+        Crop? crop = null)
     {
-        var cache = CachePath(path, fps);
+        var cache = CachePath(path, $"{FFmpeg.F(fps)}|{W}x{H}|{crop?.Filter}", ".bin");
         if (useCache && File.Exists(cache))
         {
             try { return new Fingerprint(await File.ReadAllBytesAsync(cache, ct), fps); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
-        var raw = await FFmpeg.ReadThumbFrames(path, fps, W, H, hwaccel, onFrames, ct);
+        var raw = await FFmpeg.ReadThumbFrames(path, fps, W, H, hwaccel, onFrames, ct, crop);
         if (raw.Length < Dim) throw new InvalidOperationException($"没有解出任何画面：{path}");
         if (useCache)
         {
@@ -89,10 +90,32 @@ public sealed class Fingerprint
     /// <summary>Portable: the cache lives next to the executable, never in the user profile. Unwritable folder = no cache.</summary>
     public static string CacheDir => Path.Combine(AppContext.BaseDirectory, "cache");
 
-    static string CachePath(string path, double fps)
+    static string CachePath(string path, string what, string ext)
     {
         var fi = new FileInfo(path);
-        var key = $"v1|{fi.FullName}|{fi.Length}|{fi.LastWriteTimeUtc.Ticks}|{FFmpeg.F(fps)}|{W}x{H}";
-        return Path.Combine(CacheDir, Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(key))) + ".bin");
+        var key = $"v1|{fi.FullName}|{fi.Length}|{fi.LastWriteTimeUtc.Ticks}|{what}";
+        return Path.Combine(CacheDir, Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(key))) + ext);
+    }
+
+    /// <summary>Black-bar detection, cached next to the fingerprints ("none" = no bars).</summary>
+    public static async Task<Crop?> DetectCrop(string path, bool useCache, CancellationToken ct)
+    {
+        var cache = CachePath(path, "crop", ".crop");
+        if (useCache && File.Exists(cache))
+        {
+            try
+            {
+                var t = (await File.ReadAllTextAsync(cache, ct)).Split(':');
+                return t.Length == 6 ? new Crop(int.Parse(t[0]), int.Parse(t[1]), int.Parse(t[2]), int.Parse(t[3]), int.Parse(t[4]), int.Parse(t[5])) : null;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException) { }
+        }
+        var crop = await FFmpeg.DetectCrop(path, ct);
+        if (useCache)
+        {
+            try { Directory.CreateDirectory(CacheDir); await File.WriteAllTextAsync(cache, crop is { } c ? $"{c.W}:{c.H}:{c.X}:{c.Y}:{c.FrameW}:{c.FrameH}" : "none", ct); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+        }
+        return crop;
     }
 }

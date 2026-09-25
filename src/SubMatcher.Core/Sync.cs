@@ -13,6 +13,9 @@ public sealed class SyncResult
     public required string OutputPath { get; init; }
     public required double Fps { get; init; }
     public required string CheckLog { get; init; }
+    /// <summary>Black bars cut off before matching (null = none found, or auto-crop off).</summary>
+    public Crop? SrcCrop { get; init; }
+    public Crop? DstCrop { get; init; }
     public int NeedsCheckCount => Events.Count(e => e.NeedsCheck);
 }
 
@@ -61,12 +64,22 @@ public static class Sync
         double fps = o.AnalysisFps > 0 ? Tools.ExactFps(o.AnalysisFps) : dstInfo.Fps;
         while (fps > 31) fps /= 2;
 
+        // Black bars differ between releases (BD letterboxed, WEB not, or the other way round): compare the picture only.
+        Crop? srcCrop = null, dstCrop = null;
+        if (o.AutoCrop)
+        {
+            progress?.Report(new("检测黑边", 0));
+            var cs = Fingerprint.DetectCrop(srcVideo, o.UseCache, ct);
+            var cd = Fingerprint.DetectCrop(dstVideo, o.UseCache, ct);
+            (srcCrop, dstCrop) = (await cs, await cd);
+        }
+
         // Decode both videos at once; progress is frames decoded over frames expected.
         double expected = Math.Max(1, (srcInfo.DurationSeconds + dstInfo.DurationSeconds) * fps);
         int doneA = 0, doneB = 0;
         void Report() => progress?.Report(new("解码画面", Math.Min(1, (doneA + doneB) / expected) * 0.85));
-        var ta = Fingerprint.FromVideo(srcVideo, fps, o.HwAccel, o.UseCache, f => { doneA = f; Report(); }, ct);
-        var tb = Fingerprint.FromVideo(dstVideo, fps, o.HwAccel, o.UseCache, f => { doneB = f; Report(); }, ct);
+        var ta = Fingerprint.FromVideo(srcVideo, fps, o.HwAccel, o.UseCache, f => { doneA = f; Report(); }, ct, srcCrop);
+        var tb = Fingerprint.FromVideo(dstVideo, fps, o.HwAccel, o.UseCache, f => { doneB = f; Report(); }, ct, dstCrop);
         var a = await ta;
         var b = await tb;
         CheckComplete(srcVideo, srcInfo, a);
@@ -80,9 +93,24 @@ public static class Sync
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(output))!);
         doc.Save(output);
 
-        var log = BuildCheckLog(results, fps, srcVideo, dstVideo);
+        var log = CropNote(o.AutoCrop, srcCrop, dstCrop) + BuildCheckLog(results, fps, srcVideo, dstVideo);
         progress?.Report(new("完成", 1));
-        return new SyncResult { Events = results, Doc = doc, OutputPath = output, Fps = fps, CheckLog = log };
+        return new SyncResult { Events = results, Doc = doc, OutputPath = output, Fps = fps, CheckLog = log, SrcCrop = srcCrop, DstCrop = dstCrop };
+    }
+
+    /// <summary>One line for the UI: which side had black bars cut before matching; null when neither had any.</summary>
+    public static string? CropSummary(Crop? src, Crop? dst) => src == null && dst == null ? null
+        : $"已切黑边 · 源 {(src == null ? "无黑边" : $"{src.W}×{src.H}")} · 目标 {(dst == null ? "无黑边" : $"{dst.W}×{dst.H}")}";
+
+    static string CropNote(bool auto, Crop? src, Crop? dst)
+    {
+        if (!auto) return "黑边：未检测（已关闭自动切黑边）\n\n";
+        var sb = new StringBuilder();
+        sb.AppendLine($"黑边（匹配前切掉）: 源 {src?.ToString() ?? "无"} / 目标 {dst?.ToString() ?? "无"}");
+        // Only one side letterboxed: the script's coordinates are for the other frame, so positioned signs may sit in the wrong place.
+        if ((src == null) != (dst == null))
+            sb.AppendLine("注意：只有一边有黑边。字幕坐标按源视频的画面写的，用 \\pos 定位的屏幕字在目标视频上可能偏位，请抽查。");
+        return sb.AppendLine().ToString();
     }
 
     /// <summary>

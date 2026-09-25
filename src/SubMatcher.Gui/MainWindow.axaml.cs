@@ -77,6 +77,7 @@ public partial class MainWindow : Window
         TgProxy.Text = _settings.TgProxy;
         SubsetApiKey.Text = _settings.FontApiKey;
         AutoSubset.IsChecked = _settings.AutoSubset;
+        AutoCrop.IsChecked = _settings.AutoCrop;
         ApplyTheme(_settings.Theme);
         Tour.Closed += _ => { _settings.TourDone = true; _settings.Save(); HideEmptyResults(); };
         Opened += (_, _) =>
@@ -227,6 +228,7 @@ public partial class MainWindow : Window
         SnapToCuts = OptSnap.IsChecked == true,
         HwAccel = OptHw.IsChecked == true,
         UseCache = OptCache.IsChecked == true,
+        AutoCrop = AutoCrop.IsChecked == true,
     };
 
     static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().Trim('"');
@@ -288,7 +290,7 @@ public partial class MainWindow : Window
             .Select(g => $"{Sync.FormatShift(g.Key, result.Fps)} × {g.Count()}");
         Summary.Type = check == 0 ? NotificationType.Success : NotificationType.Warning;
         Summary.Header = check == 0 ? $"全部 {result.Events.Count} 行都对上了" : $"{result.Events.Count} 行，{check} 行需要检查";
-        Summary.Content = "主要偏移：" + string.Join("，", shifts);
+        Summary.Content = "主要偏移：" + string.Join("，", shifts) + (Sync.CropSummary(result.SrcCrop, result.DstCrop) is { } crop ? "\n" + crop : "");
         EmptyHint.IsVisible = false;
         ResultsPanel.IsVisible = true;
         // Next frame so the transition runs from the hidden state.
@@ -387,6 +389,12 @@ public partial class MainWindow : Window
             }
         }
         catch (IOException ex) { Status.Text = "保存失败：" + ex.Message; }
+    }
+
+    void AutoCropChanged(object? sender, RoutedEventArgs e)
+    {
+        _settings.AutoCrop = AutoCrop.IsChecked == true;
+        _settings.Save();
     }
 
     void AutoSubsetChanged(object? sender, RoutedEventArgs e)

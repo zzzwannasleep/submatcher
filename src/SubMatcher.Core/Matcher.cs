@@ -16,6 +16,8 @@ public sealed class SyncOptions
     public double MinLineSeconds { get; set; } = 1.5;
     public bool HwAccel { get; set; }
     public bool UseCache { get; set; } = true;
+    /// <summary>Detect black bars on both videos and cut them off before comparing pictures.</summary>
+    public bool AutoCrop { get; set; } = true;
     /// <summary>Embedded subtitle stream to use when no subtitle file is given.</summary>
     public int SubtitleStream { get; set; }
 }

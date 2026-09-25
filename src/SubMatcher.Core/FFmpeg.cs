@@ -8,8 +8,21 @@ namespace SubMatcher.Core;
 /// <param name="VideoStartMs">First video frame's time relative to the container start (0 for most mkv/mp4).</param>
 public sealed record VideoInfo(double Fps, double DurationSeconds, double VideoStartMs = 0);
 
+/// <summary>The picture inside black bars: W×H at (X, Y) of a FrameW×FrameH frame.</summary>
+public sealed record Crop(int W, int H, int X, int Y, int FrameW, int FrameH)
+{
+    public string Filter => $"crop={W}:{H}:{X}:{Y},";
+    public override string ToString()
+    {
+        var bars = new List<string>();
+        if (FrameH - H > 0) bars.Add($"上 {Y} 下 {FrameH - H - Y}");
+        if (FrameW - W > 0) bars.Add($"左 {X} 右 {FrameW - W - X}");
+        return $"{FrameW}×{FrameH} → {W}×{H}（黑边 {string.Join("，", bars)}）";
+    }
+}
+
 /// <summary>Thin wrapper around the ffmpeg/ffprobe executables (next to the app, in SUBMATCHER_FFMPEG, or on PATH).</summary>
-public static class FFmpeg
+public static partial class FFmpeg
 {
     public static string Exe(string name)
     {
@@ -77,14 +90,83 @@ public static class FFmpeg
 
     public static string F(double v) => v.ToString("0.######", CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// Black bars (letterbox / pillarbox): one full-size gray frame at each of a few points spread over the video, bars found
+    /// on each, then the union of the pictures, so a dark scene can't make it cut into the image. Null when there are none.
+    /// Done here rather than with ffmpeg's cropdetect, which is GPL-only and missing from the bundled LGPL build.
+    /// </summary>
+    public static async Task<Crop?> DetectCrop(string path, CancellationToken ct = default)
+    {
+        var json = await RunText("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", path], ct);
+        int w, h;
+        double dur;
+        using (var doc = JsonDocument.Parse(json))
+        {
+            var s = doc.RootElement.GetProperty("streams")[0];
+            (w, h) = (s.GetProperty("width").GetInt32(), s.GetProperty("height").GetInt32());
+            dur = doc.RootElement.TryGetProperty("format", out var f) && f.TryGetProperty("duration", out var d)
+                  && double.TryParse(d.GetString(), CultureInfo.InvariantCulture, out var v) ? v : 0;
+        }
+        var found = new List<(int T, int B, int L, int R)>();
+        foreach (var at in new[] { 0.08, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.92 })
+        {
+            var px = await GrayFrame(path, dur * at, ct);
+            if (px.Length >= w * h && Bars(px, w, h) is { } b) found.Add(b);
+        }
+        if (found.Count == 0) return null;
+        // Union of the pictures = the thinnest bar seen on each side; even numbers keep chroma planes aligned.
+        int Even(int v) => v & ~1;
+        int t = Even(found.Min(x => x.T)), bo = Even(found.Min(x => x.B)), l = Even(found.Min(x => x.L)), r = Even(found.Min(x => x.R));
+        var crop = new Crop(w - l - r, h - t - bo, l, t, w, h);
+        // Bars thinner than 2% of the frame are noise (the 5% edge trim covers them anyway).
+        return crop.W >= w * 0.98 && crop.H >= h * 0.98 || crop.W < w / 4 || crop.H < h / 4 ? null : crop;
+    }
+
+    /// <summary>Top/bottom/left/right black bar thickness of one gray frame; null for a frame that is dark all over.</summary>
+    internal static (int T, int B, int L, int R)? Bars(ReadOnlySpan<byte> px, int w, int h)
+    {
+        // A line is "black" when it is dark on average and has almost no bright pixels (noise and dither allowed).
+        const int Bright = 40;
+        bool Dark(ReadOnlySpan<byte> px, int start, int count, int step)
+        {
+            int sum = 0, bright = 0;
+            for (int i = 0, p = start; i < count; i++, p += step) { sum += px[p]; if (px[p] > Bright) bright++; }
+            return sum < 30 * count && bright * 100 < count;
+        }
+        int t = 0;
+        while (t < h && Dark(px, t * w, w, 1)) t++;
+        if (t == h) return null;
+        int b = 0;
+        while (b < h - t && Dark(px, (h - 1 - b) * w, w, 1)) b++;
+        int rows = h - t - b, l = 0, r = 0;
+        while (l < w && Dark(px, t * w + l, rows, w)) l++;
+        while (r < w - l && Dark(px, t * w + w - 1 - r, rows, w)) r++;
+        return (t, b, l, r);
+    }
+
+    static async Task<byte[]> GrayFrame(string path, double seconds, CancellationToken ct)
+    {
+        using var p = Start("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-ss", F(Math.Max(0, seconds)), "-i", path,
+            "-map", "0:v:0", "-frames:v", "1", "-vf", "format=gray", "-f", "rawvideo", "-pix_fmt", "gray", "-"]);
+        using var reg = ct.Register(() => { try { p.Kill(true); } catch { } });
+        var errTask = p.StandardError.ReadToEndAsync(CancellationToken.None);
+        var ms = new MemoryStream();
+        await p.StandardOutput.BaseStream.CopyToAsync(ms, ct);
+        await p.WaitForExitAsync(ct);
+        await errTask;
+        return ms.ToArray();
+    }
+
     /// <summary>Streams the video as tiny grayscale frames at a fixed rate. onFrames gets the running frame count.</summary>
-    public static async Task<byte[]> ReadThumbFrames(string path, double fps, int w, int h, bool hwaccel, Action<int>? onFrames, CancellationToken ct)
+    public static async Task<byte[]> ReadThumbFrames(string path, double fps, int w, int h, bool hwaccel, Action<int>? onFrames, CancellationToken ct,
+        Crop? crop = null)
     {
         var args = new List<string> { "-hide_banner", "-loglevel", "error", "-nostdin" };
         if (hwaccel) args.AddRange(["-hwaccel", "auto"]);
-        // Crop 5% off each edge: TV logos, overscan junk and small letterbox differences stop mattering.
+        // Black bars off first (so both sides compare the picture itself), then 5% off each edge:
+        // TV logos, overscan junk and small letterbox differences stop mattering.
         args.AddRange(["-i", path, "-map", "0:v:0", "-an", "-sn", "-dn",
-            "-vf", $"fps={F(fps)},crop=iw*0.9:ih*0.9,scale={w}:{h}:flags=area,format=gray",
+            "-vf", $"fps={F(fps)},{crop?.Filter}crop=iw*0.9:ih*0.9,scale={w}:{h}:flags=area,format=gray",
             "-f", "rawvideo", "-pix_fmt", "gray", "-"]);
 
         using var p = Start("ffmpeg", args);

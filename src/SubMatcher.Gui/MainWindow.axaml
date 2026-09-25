@@ -103,8 +103,12 @@
                   </Grid>
                 </Expander>
 
-                <ToggleSwitch x:Name="AutoSubset" Content="调轴后自动子集化" IsCheckedChanged="AutoSubsetChanged"
-                              ToolTip.Tip="输出的字幕直接嵌入子集化字体（会上传到字体服务器）。服务器等设置在「工具 → 字体子集化」" />
+                <Grid ColumnDefinitions="*,*">
+                  <ToggleSwitch x:Name="AutoCrop" Content="自动切黑边" IsChecked="True" IsCheckedChanged="AutoCropChanged"
+                                ToolTip.Tip="两个视频都检测黑边（BD 有黑边 WEB 没有、或反过来），切掉后再比画面。检测结果显示在结果摘要和检查日志里" />
+                  <ToggleSwitch x:Name="AutoSubset" Grid.Column="1" Content="调轴后自动子集化" IsCheckedChanged="AutoSubsetChanged"
+                                ToolTip.Tip="输出的字幕直接嵌入子集化字体（会上传到字体服务器）。服务器等设置在「工具 → 字体子集化」" />
+                </Grid>
                 <Button x:Name="RunBtn" Theme="{DynamicResource SolidButton}" Classes="Primary Large" Content="开始调轴"
                         HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Click="RunSync" />
                 <Grid ColumnDefinitions="*,8,*">

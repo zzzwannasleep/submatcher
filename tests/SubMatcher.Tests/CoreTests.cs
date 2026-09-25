@@ -57,6 +57,23 @@ public class CoreTests
     }
 
     [Fact]
+    public void FindsBlackBarsDespiteNoiseAndSkipsDarkFrames()
+    {
+        const int w = 200, h = 120;
+        var px = new byte[w * h];
+        var rnd = new Random(1);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                px[y * w + x] = (byte)(y < 15 || y >= h - 15 || x < 20 || x >= w - 20 ? 16 + rnd.Next(6) : 60 + rnd.Next(150)); // tv-range black + dither
+        px[3 * w + 50] = 255; // a stray bright pixel in the bar
+        Assert.Equal((15, 15, 20, 20), FFmpeg.Bars(px, w, h));
+
+        var dark = new byte[w * h];
+        Array.Fill(dark, (byte)16);
+        Assert.Null(FFmpeg.Bars(dark, w, h)); // a black frame says nothing about bars
+    }
+
+    [Fact]
     public void EpisodeNumbers()
     {
         Assert.Equal("1", Sync.EpisodeOf("[VCB-Studio] Show [01][Ma10p_1080p][x265_flac].mkv"));

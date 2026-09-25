@@ -11,6 +11,7 @@ public sealed class AppSettings
     public string FontServer { get; set; } = "https://font.anibt.net";
     public string FontApiKey { get; set; } = "";
     public bool AutoSubset { get; set; }
+    public bool AutoCrop { get; set; } = true;
     public string TgChannel { get; set; } = SubMatcher.Core.TgSubs.DefaultChannel;
     public string TgProxy { get; set; } = "";
 

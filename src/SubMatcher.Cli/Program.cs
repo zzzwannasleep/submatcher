@@ -206,6 +206,7 @@ async Task<int> RunSync(string src, string? sub, string dst, string? output)
     {
         WindowSeconds = Num("window", 10), AnalysisFps = Num("fps", 0), MaxCost = Num("max-cost", 0.4), WarnCost = Num("warn-cost", 0.2),
         MinLineSeconds = Num("min-line", 1.5), SnapToCuts = !Flag("no-snap"), HwAccel = Flag("hwaccel"), UseCache = !Flag("no-cache"),
+        AutoCrop = !Flag("no-crop"),
         SubtitleStream = (int)Num("stream", 0),
     };
     string lastStage = "";
@@ -219,6 +220,7 @@ async Task<int> RunSync(string src, string? sub, string dst, string? output)
     Console.Error.WriteLine();
     Console.WriteLine($"输出: {r.OutputPath}");
     Console.WriteLine($"共 {r.Events.Count} 行，需检查 {r.NeedsCheckCount} 行");
+    if (Sync.CropSummary(r.SrcCrop, r.DstCrop) is { } crop) Console.WriteLine("  " + crop);
     foreach (var g in r.Events.GroupBy(e => e.ShiftFrames).OrderByDescending(g => g.Count()).Take(5))
         Console.WriteLine($"  偏移 {Sync.FormatShift(g.Key, r.Fps)} × {g.Count()} 行");
     if (!Flag("no-log"))
@@ -280,7 +282,7 @@ static void Need(List<string> pos, int n, string usage)
 
 static (List<string>, Dictionary<string, string>) ParseArgs(string[] a)
 {
-    string[] flags = ["no-snap", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run", "files"];
+    string[] flags = ["no-snap", "no-crop", "hwaccel", "no-cache", "no-log", "subset", "r", "recursive", "in-place", "strict", "clean", "copy", "no-backup", "dry-run", "files"];
     var pos = new List<string>();
     var opt = new Dictionary<string, string>();
     for (int i = 0; i < a.Length; i++)
@@ -305,6 +307,7 @@ static void Usage() => Console.WriteLine("""
         --warn-cost 0.2  超过则写入检查日志
         --min-line 1.5   短于此秒数的行会扩展取样窗口
         --no-snap        不吸附镜头切换点
+        --no-crop        不自动切黑边（默认两边都检测，黑边切掉再比画面）
         --hwaccel        使用硬件解码
         --no-cache       不使用画面指纹缓存
         --no-log         不写 .check.log
