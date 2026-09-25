@@ -63,11 +63,13 @@ public partial class MainWindow : Window
         Tabs.SelectionChanged += (_, e) =>
         {
             if (e.Source != Tabs) return; // SelectionChanged also bubbles up from the results grid
-            if (Tabs.SelectedIndex == 2) UpdateCacheInfo();
+            if (Tabs.SelectedItem == TabSettings) UpdateCacheInfo();
             // TabControl has no page transition in Avalonia 11.3: fade the new page in like an expander.
             if ((Tabs.SelectedItem as TabItem)?.Content is Visual page) _ = new DropDownReveal { Duration = TimeSpan.FromMilliseconds(180) }.Start(null, page, true, default);
         };
 
+        Updater.Cleanup();
+        UpdateInfo.Text = $"当前 v{Updater.Current.ToString(3)}";
         SubsetServer.Text = _settings.FontServer;
         SubsetApiKey.Text = _settings.FontApiKey;
         AutoSubset.IsChecked = _settings.AutoSubset;
@@ -400,11 +402,11 @@ public partial class MainWindow : Window
         : r.Written ? "已嵌入字体，缺：" + string.Join("、", r.Messages)
         : "子集化失败（字幕已保存，未嵌字体）：" + string.Join("；", r.Messages);
 
-    async Task<bool> Confirm(string msg)
+    async Task<bool> Confirm(string msg, string yesText = "确定")
     {
         var ok = false;
-        var dlg = new Window { Title = "SubMatcher", Width = 360, Height = 140, WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false };
-        var yes = new Button { Content = "确定", Classes = { "accent" } };
+        var dlg = new Window { Title = "SubMatcher", Width = 420, SizeToContent = SizeToContent.Height, WindowStartupLocation = WindowStartupLocation.CenterOwner, CanResize = false };
+        var yes = new Button { Content = yesText, Classes = { "accent" } };
         var no = new Button { Content = "取消" };
         yes.Click += (_, _) => { ok = true; dlg.Close(); };
         no.Click += (_, _) => dlg.Close();
@@ -585,7 +587,34 @@ public partial class MainWindow : Window
     void ClearCache(object? sender, RoutedEventArgs e)
     {
         try { if (Directory.Exists(Fingerprint.CacheDir)) Directory.Delete(Fingerprint.CacheDir, true); }
-        catch (IOException ex) { ToolStatus.Text = "失败：" + ex.Message; }
+        catch (IOException ex) { Toast("清空失败", ex.Message, NotificationType.Error); }
         UpdateCacheInfo();
+    }
+
+    // ---------------- update ----------------
+
+    async void CheckUpdate(object? sender, RoutedEventArgs e)
+    {
+        UpdateBtn.IsEnabled = false;
+        try
+        {
+            UpdateInfo.Text = "正在检查…";
+            if (await Updater.Check() is not { } r) { UpdateInfo.Text = $"当前 v{Updater.Current.ToString(3)}，已是最新版"; return; }
+            UpdateInfo.Text = $"当前 v{Updater.Current.ToString(3)}，可更新到 {r.Tag}";
+            if (!await Confirm($"发现新版本 {r.Tag}（当前 v{Updater.Current.ToString(3)}），现在更新吗？\n更新完会自动重启"
+                               + (_dirty ? "，未保存的手动修改会丢失。" : "。"), "更新")) return;
+            UpdateProgress.IsVisible = true;
+            UpdateInfo.Text = "正在下载…";
+            await Updater.Install(r, new Progress<double>(p => { UpdateProgress.Value = p; UpdateInfo.Text = $"正在下载… {p * 100:0}%"; }));
+            Process.Start(Environment.ProcessPath!);
+            (Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException
+                                      or InvalidOperationException or System.Text.Json.JsonException or KeyNotFoundException)
+        {
+            UpdateInfo.Text = "更新失败：" + ex.Message;
+            Toast("更新失败", ex.Message, NotificationType.Error);
+        }
+        finally { UpdateBtn.IsEnabled = true; UpdateProgress.IsVisible = false; }
     }
 }
