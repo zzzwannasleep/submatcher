@@ -306,9 +306,12 @@
                   <Button Grid.Column="1" Content="预览" Click="RenamePreview" VerticalAlignment="Center" />
                   <Button x:Name="RenameBtn" Grid.Column="3" Theme="{DynamicResource SolidButton}" Classes="Primary" Content="改名" Click="RenameRun" VerticalAlignment="Center" />
                 </Grid>
-                <Border Grid.Row="5" Padding="4" BorderThickness="1" BorderBrush="{DynamicResource SemiColorBorder}" CornerRadius="6">
-                  <TextBox x:Name="RenLog" IsReadOnly="True" AcceptsReturn="True" TextWrapping="NoWrap" BorderThickness="0" Background="Transparent"
-                           FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12" VerticalContentAlignment="Top" Watermark="预览：原字幕 → 新名字" />
+                <Border Grid.Row="5" Padding="12,10" BorderThickness="1" BorderBrush="{DynamicResource SemiColorBorder}" CornerRadius="6">
+                  <!-- read-only text, top-aligned (Semi's TextBox centres short content vertically) -->
+                  <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                    <SelectableTextBlock x:Name="RenLog" FontFamily="Cascadia Mono,Consolas,Menlo,monospace" FontSize="12"
+                                         Foreground="{DynamicResource SemiColorText2}" Text="预览：原字幕 → 新名字" />
+                  </ScrollViewer>
                 </Border>
               </Grid>
             </Border>

@@ -37,6 +37,13 @@ macOS 第一次打开被拦的话，对解压出来的文件夹执行 `xattr -cr
 
 「下载与改名」页：从 Telegram 字幕频道 [@anime_chinese_subtitles](https://t.me/anime_chinese_subtitles) 按片名检索，按平台和简繁合并，选一个平台就把它的全部简体或繁体字幕下下来（手机扫码登录一次）。调完轴、子集化完，一键把字幕改成视频名（参考 [SubRenamer](https://github.com/qwqcode/SubRenamer)），播放器直接加载。
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-subs-dark.png">
+    <img src="docs/screenshot-subs-light.png" width="860" alt="下载与改名">
+  </picture>
+</p>
+
 命令行：
 
 ```sh

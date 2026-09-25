@@ -231,7 +231,7 @@ public class GuiTests
         w.AcceptPaths([dir]);
         Assert.Equal(dir, w.FindControl<TextBox>("RenVideos")!.Text);
         Click(w, "预览");
-        Assert.Contains("[BD] Show - 01.sc.srt", w.FindControl<TextBox>("RenLog")!.Text);
+        Assert.Contains("[BD] Show - 01.sc.srt", w.FindControl<SelectableTextBlock>("RenLog")!.Text);
         Click(w, "改名");
         Assert.Equal("sc", File.ReadAllText(Path.Combine(dir, "[BD] Show - 01.sc.srt")));
         Assert.True(File.Exists(Path.Combine(dir, "字幕备份", "CHS_Show_第1集_Viu.srt")));
@@ -300,6 +300,26 @@ public class GuiTests
             }
             Thread.Sleep(600); Pump(); Thread.Sleep(300); Pump();
             Save(w, dir, $"readme-{theme}.png");
+
+            // 下载与改名: a search result, a finished download and a rename preview
+            w.FindControl<TabControl>("Tabs")!.SelectedItem = w.FindControl<TabItem>("TabSubs");
+            w.FindControl<TextBlock>("TgStatus")!.Text = "已登录";
+            w.FindControl<Button>("TgLoginBtn")!.Content = "退出登录";
+            w.FindControl<TextBox>("TgQuery")!.Text = "秘密基地";
+            var groups = w.FindControl<ListBox>("TgGroups")!;
+            groups.ItemsSource = new[]
+            {
+                "秘密基地  ·  Bilibili    简 12 / 繁 12", "秘密基地  ·  Crunchyroll    简 12 / 繁 12",
+                "祕密基地  ·  iQIYI    简 12 / 繁 12", "秘密基地  ·  Viu    简 11 / 繁 11",
+            };
+            groups.SelectedIndex = 0;
+            w.FindControl<TextBlock>("TgLog")!.Text = @"已下载 12 个 → D:\Anime\字幕下载\秘密基地 [Bilibili]";
+            w.FindControl<TextBox>("RenVideos")!.Text = @"D:\Anime\[BD] 秘密基地";
+            w.FindControl<TextBox>("RenSubs")!.Text = @"D:\Anime\字幕下载\秘密基地 [Bilibili]";
+            w.FindControl<SelectableTextBlock>("RenLog")!.Text = string.Join("\n", Enumerable.Range(1, 6).Select(i =>
+                $"CHS_秘密基地_第{i}集_Bilibili.subset.ass\n    → [BD] 秘密基地 [{i:00}][Ma10p_1080p].sc.ass"));
+            Thread.Sleep(600); Pump(); Thread.Sleep(300); Pump(); // let the tab fade-in finish
+            Save(w, dir, $"subs-{theme}.png");
             if (theme == "dark") Click(w, "浅色模式");
         }
     }
