@@ -154,6 +154,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # commits since the previous tag go into the notes
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -165,9 +168,4 @@ jobs:
         run: |
           # --target makes gh create the tag on this commit when it doesn't exist yet.
           gh release create "$TAG" dist/*.zip -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "SubMatcher $TAG" --generate-notes --notes "$(cat <<'EOF'
-          解压即用。带 `-ffmpeg` 的自带 ffmpeg，一般下这个。
-
-          `win-x64` · `linux-x64` · `osx-arm64`（M 系列 Mac）· `osx-x64`（Intel Mac）。macOS 第一次打开被拦的话，对解压出来的文件夹执行 `xattr -cr`。
-          EOF
-          )"
+            --title "SubMatcher $TAG" --notes-file <(sh .github/release-notes.sh "$TAG" "$GITHUB_SHA")
